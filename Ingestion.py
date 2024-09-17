@@ -1,12 +1,30 @@
 # Databricks notebook source
-from const import *
-from unstructured.partition.pdf import partition_pdf
+# MAGIC %run ./Utils/StorageAccountAccess_Secrets
 
 # COMMAND ----------
 
-import fitz  # PyMuPDF
+from const import *
+#from unstructured.partition.pdf import partition_pdf
+import fitz 
+import os
+import shutil
+import json
+from dotenv import load_dotenv
+load_dotenv()
 
-def chunk_pdf_by_sections(pdf_path, section_names):
+# COMMAND ----------
+
+storageAccountName = os.environ.get("storageAccountName")
+storageAccountAccessKey = os.environ.get("storageAccountAccessKey")
+#storageAccountAccessKey = "KqDmutvYKFkUfibvOLivxyuYP+x9KqY3DblOGarDbgJjMBEbEfUn3bhEjyuNO+DUvgDdOcl2fgrX+AStRyyYDA=="
+print(storageAccountAccessKey)
+mount_blob_storage("inputs")
+mount_blob_storage("outputs")
+
+# COMMAND ----------
+
+ # PyMuPDF
+def chunk_pdf_by_sections(pdf_path, section_names, reporting_period, product_name, single_filename, site_name):
     """
     Chunk a PDF based on a given list of section names.
     
@@ -20,18 +38,19 @@ def chunk_pdf_by_sections(pdf_path, section_names):
     
     # Open the PDF
     doc = fitz.open(pdf_path)
-    
+    print(doc)
     # Dictionary to hold chunks
     sections = []
     current_section = None
     
     # Normalize section names to avoid case sensitivity issues
     normalized_section_names = [name.lower() for name in section_names]
+    print(normalized_section_names)
 
     # Function to find if a text matches any section name
     def match_section(text):
-        normalized_text = text.strip().lower()
-        return next((name for name in normalized_section_names if normalized_text.startswith(name)), None)
+        normalized_text = text.lower()
+        return next((name for name in normalized_section_names if normalized_text.startswith(name) ), None)
     
     # Iterate through each page of the PDF
     for page_num in range(len(doc)):
@@ -44,20 +63,23 @@ def chunk_pdf_by_sections(pdf_path, section_names):
                 for line in block['lines']:
                     for span in line['spans']:
                         block_text += span['text'] + " "
-
+                        #print(block_text)
                 # Check if the current block starts a new section
                 matched_section = match_section(block_text)
+                print(block_text)
                 if matched_section:
                     # If a new section is found, save the previous section (if any)
                     if current_section and current_section["content"].strip():
                         sections.append(current_section)
                     
-                    # Start a new section
+                    # Start a new section  reporting_period, product_name, single_filename
                     current_section = {
                         "section_name": matched_section,
-                        "file_name": pdf_path,
-                        "site_name": pdf_path,
-                        "product_name":,
+                        "file_name": single_filename,
+                        "reporting_period": reporting_period,
+                        "product_name": product_name,
+                        "site_name": site_name, 
+                        "page_num": page_num,                        
                         "content": ""
                     }
                 elif current_section:
@@ -70,35 +92,21 @@ def chunk_pdf_by_sections(pdf_path, section_names):
 
     return sections
 
-
-# Example usage
-pdf_path = "example.pdf"
-
-# List of known section names to look for in the PDF
-# section_names import from const.py
-
-# Call the function to chunk the PDF by section names
-section_chunks = chunk_pdf_by_sections(pdf_path, section_names)
-
-# Display the results
-for section in section_chunks:
-    print(f"Section: {section['section_name']}")
-    print(f"Content: {section['content'][:500]}...")  # Print first 500 characters for preview
-    print("\n--- End of Section ---\n")
-
 # COMMAND ----------
 
+def get_site_name(file_name):  
+    return (((file_name.split('-'))[1]).split('.'))[0] 
 
 
 # COMMAND ----------
 
-def ingest_pdf(pdf_path):
+def ingest_pdf(pdf_path, section_names, reporting_period, product_name, single_filename, site_name):
     #chunks = partition_pdf(filename=pqr_pdf,
     #                   chunking_strategy="by_title",
     #                  extract_images_in_pdf=True,
     #                  infer_table_structure=True)
     
-    section_chunks = chunk_pdf_by_sections(pdf_path, section_names)
+    section_chunks = chunk_pdf_by_sections(pdf_path, section_names, reporting_period, product_name, single_filename,  site_name)
     return section_chunks
     
 
@@ -110,22 +118,62 @@ def ingest_docx(filename):
 
 # Dictionary to hold chunks
 section_chunks = []
-list_of_files = get_list_of_files(input_folder)
-if len(list_of_files) > 0:
+input_folder = f"{INTPUTS_PATH}"  ### intput directory, where all intputs  files are save
+output_folder = f"{OUTPUTS_PATH}"  ### output directory, where all output files are save
+print(input_folder)
+list_of_reporting_period = get_list_of_files(input_folder)
+
+if len(list_of_reporting_period) > 0:
 ######## iSRS Extration of docx documents
     #logging.info('Extraction Job Started...')
     ###
-    for single_filename in list_of_files:
-        filename_to_proceed = input_folder+single_filename
-        if(single_filename.endswith(".pdf")):
-           section_chunks = ingest_pdf(filename_to_proceed)
-        else if(single_filename.endswith(".docx")):
-            section_chunks = ingest_docx(filename_to_proceed)
+    for reporting_period in list_of_reporting_period:
+        list_of_product_name = get_list_of_files(f"{input_folder}/{reporting_period}")
+        print(f"{input_folder}/{reporting_period}")
+
+        for product_name in list_of_product_name: 
+            list_of_files = get_list_of_files(f"{input_folder}/{reporting_period}/{product_name}")
+            print(f"{input_folder}/{reporting_period}/{product_name}")
+
+            for single_filename in list_of_files:
+               filename_to_proceed = f"{input_folder}/{reporting_period}/{product_name}/{single_filename}"
+               print(f"{input_folder}/{reporting_period}/{product_name}/{single_filename}")
+               site_name = get_site_name(single_filename)
+               print(site_name)
+               if(single_filename.endswith(".pdf")): 
+                   print("tototottotototo")                  
+                   section_chunks = ingest_pdf(filename_to_proceed, section_names, reporting_period, product_name, single_filename, site_name)
+               else: 
+                   if single_filename.endswith(".docx"):
+                      section_chunks = ingest_docx(filename_to_proceed, section_names, reporting_period, product_name, single_filename, site_name)
+
+# COMMAND ----------
+
+section_chunks
 
 # COMMAND ----------
 
 # Display the results
 for section in section_chunks:
     print(f"Section: {section['section_name']}")
+    print(f"File Name: {section['file_name']}")
+    print(f"Reporting Period: {section['reporting_period']}")
+    print(f"Product Name: {section['product_name']}")
+    print(f"Site Name: {section['site_name']}")
     print(f"Content: {section['content'][:500]}...")  # Print first 500 characters for preview
     print("\n--- End of Section ---\n")
+
+# COMMAND ----------
+
+
+def save_chunks_to_json(chunks, output_path):
+    """Save the chunked sections to a JSON file."""
+    tmp_file = "/tmp/"+"pqr_section_chunks.json"
+    with open(tmp_file, "w") as json_file:
+        json.dump(chunks, json_file, indent=4)
+    shutil.move(tmp_file, output_path)
+
+# Save to a JSON file
+output_path = f"{output_folder}/pqr_section_chunks.json"
+
+save_chunks_to_json(section_chunks, output_path)

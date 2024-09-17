@@ -27,8 +27,8 @@ mount_blob_storage("outputs")
 #input_folder =dbutils.secrets.get(secret_scope,"input_folder")
 #output_folder = dbutils.secrets.get(secret_scope,"output_folder")
 
-input_folder = f"/dbfs/mnt/FileStore/inputs/"  ### intput directory, where all intputs  files are save
-output_folder = f"/dbfs/mnt/FileStore/outputs/"  ### output directory, where all output files are save
+#input_folder = f"/dbfs/mnt/FileStore/inputs/"  ### intput directory, where all intputs  files are save
+#output_folder = f"/dbfs/mnt/FileStore/outputs/"  ### output directory, where all output files are save
 
 
 # COMMAND ----------
@@ -51,7 +51,7 @@ doc = docx.Document("dbfs:/mnt/FileStore/inputs/Sample_ISPR.docx")
 # COMMAND ----------
 
 
-list_of_files = get_list_of_files('/dbfs/mnt/FileStore/inputs/')
+list_of_files = get_list_of_files('/dbfs/mnt/FileStore/inputs')
 print(list_of_files)
 
 # COMMAND ----------
