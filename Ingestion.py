@@ -49,11 +49,17 @@ def chunk_pdf_by_sections(pdf_path, section_names, reporting_period, product_nam
 
     # Function to find if a text matches any section name
     def match_section(text):
-        normalized_text = text.lower()
-        return next((name for name in normalized_section_names if normalized_text.startswith(name) ), None)
+        #normalized_text = ((text.strip().lower().split(' '))[1]).strip()
+        textsplit = text.strip().lower().split(' ')
+        if len(textsplit) > 1:          
+            firstchar = ((text.strip().lower().split(' '))[0]).strip()
+            restchar = (" ".join((text.strip().lower().split(' '))[1:])).strip()
+            if firstchar.isdigit():
+               return next((name for name in normalized_section_names if restchar.startswith(name)), None)
+        return None
     
     # Iterate through each page of the PDF
-    for page_num in range(len(doc)):
+    for page_num in range(2, len(doc)):
         page = doc.load_page(page_num)
         blocks = page.get_text("dict")['blocks']
         
@@ -66,7 +72,10 @@ def chunk_pdf_by_sections(pdf_path, section_names, reporting_period, product_nam
                         #print(block_text)
                 # Check if the current block starts a new section
                 matched_section = match_section(block_text)
+                print("tototototototototototototototototototootottoottoto")
                 print(block_text)
+                print(block_text.split('  '))
+                print("ttititititititititititititititititititititi")
                 if matched_section:
                     # If a new section is found, save the previous section (if any)
                     if current_section and current_section["content"].strip():
@@ -91,6 +100,26 @@ def chunk_pdf_by_sections(pdf_path, section_names, reporting_period, product_nam
         sections.append(current_section)
 
     return sections
+
+# COMMAND ----------
+
+normalized_section_names = [name.lower() for name in section_names]
+
+def match_section(text):
+        normalized_text = ((text.strip().lower().split(' '))[1]).strip()
+        print(normalized_text )
+        return next((name for name in normalized_section_names if normalized_text == name ), None)
+
+block_text = "1   SUMMARY AND CONCLUSION"  
+a = ((block_text.strip().lower().split(' '))[0]).strip()
+a.isdigit()
+(" ".join((block_text.strip().lower().split(' '))[1:])).strip()
+#matched_section = match_section(block_text)
+#if matched_section:
+#    print('Fabrice')
+print(range(2, 4 , 1))
+
+    
 
 # COMMAND ----------
 
@@ -142,10 +171,11 @@ if len(list_of_reporting_period) > 0:
                print(site_name)
                if(single_filename.endswith(".pdf")): 
                    print("tototottotototo")                  
-                   section_chunks = ingest_pdf(filename_to_proceed, section_names, reporting_period, product_name, single_filename, site_name)
+                   section_chunks = section_chunks  + (ingest_pdf(filename_to_proceed, section_names, reporting_period, product_name, single_filename, site_name))
                else: 
                    if single_filename.endswith(".docx"):
-                      section_chunks = ingest_docx(filename_to_proceed, section_names, reporting_period, product_name, single_filename, site_name)
+                      section_chunks = section_chunks + (ingest_docx(filename_to_proceed, section_names, reporting_period, product_name, single_filename, site_name))
+                
 
 # COMMAND ----------
 
