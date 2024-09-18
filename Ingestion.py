@@ -124,7 +124,7 @@ print(range(2, 4 , 1))
 # COMMAND ----------
 
 def get_site_name(file_name):  
-    return (((file_name.split('-'))[1]).split('.'))[0] 
+    return ((((file_name.split('-'))[1]).split('.'))[0]).strip().lower()
 
 
 # COMMAND ----------
