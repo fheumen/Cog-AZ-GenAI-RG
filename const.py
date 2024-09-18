@@ -13,5 +13,3 @@ product_names = ["Fasenra"]
 #product_names = ["Lumoxity", "Enhertu", "Vaxzevria", "Beyfortus", "IMJUDO", "IMFINZI", "Synagis", "Saphnelo", "Fasenra", "Tezspire"]
 
 reporting_periods = ["14Nov2022_13Nov2013"]
-
-ispr_filename = "ispr_2021_03_01.csv"

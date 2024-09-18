@@ -42,17 +42,16 @@ for reporting_period in reporting_periods:
         for section_name in section_names:
             i = 1
             document.add_heading(section_name, i)
-            
+            i = i + 1
             for site_name in site_names:
                
             # Subsetting specific rows and columns by labels    
-                subset = df.loc[(df['section_name'] == section_name.strip().lower()) & (df['site_name'] == site_name.strip().lower()) & (df['product_name'] == product_name.strip().lower()) & (df['reporting_period'] == reporting_period), ['page_num', 'section_name', 'content']]
+                subset = df.loc[(df['section_name'] == section_name.lower()) & (df['site_name'] == site_name.lower()) & (df['product_name'] == product_name) & (df['reporting_period'] == reporting_period), ['page_num', 'section_name', 'content']]
                 print(subset)
                 print(subset.empty)
                 print(not subset.empty)
                 if not subset.empty:
                    print(subset)
-                   i = i + 1
                    max_row = subset.loc[subset['page_num'].idxmax()]
                    heading_name = section_name + "_" + site_name
                    document.add_heading(heading_name, i)
