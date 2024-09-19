@@ -7,6 +7,12 @@ section_names = ["summary and conclusion", "Batches Reviewed", "Reprocessed",
                  "Recalls, Stock recoveries, Field Alerts", "Returned and salvaged goods",
                  "CONTRACTUAL AGREEMENTS / ARRANGEMENTS", "Qualification status", "Other"]
 
+section_pattern = [r"summary and conclusion", r"Batches Reviewed", r"Reprocessed",
+                 r"Product Reviews from", r"Starting and Packaging Materials",
+                 r"Analytical Data", r"Changes", r"Stability data", r"Deviations", r"Quality Events", r"Complaints (Product Quality)",
+                 r"Recalls, Stock recoveries, Field Alerts", r"Returned and salvaged goods",
+                 r"CONTRACTUAL AGREEMENTS / ARRANGEMENTS", r"Qualification status", r"Other"]
+
 site_names = ["fmc", "sbc", "speke"]
 
 product_names = ["Fasenra"]

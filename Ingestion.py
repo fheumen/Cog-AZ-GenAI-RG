@@ -11,6 +11,9 @@ import shutil
 import json
 from dotenv import load_dotenv
 load_dotenv()
+from unstructured.partition.pdf import partition_pdf
+from unstructured.documents.elements import NarrativeText, Title, ListItem
+import re
 
 # COMMAND ----------
 
@@ -207,3 +210,18 @@ def save_chunks_to_json(chunks, output_path):
 output_path = f"{output_folder}/pqr_section_chunks.json"
 
 save_chunks_to_json(section_chunks, output_path)
+
+# COMMAND ----------
+
+
+
+# COMMAND ----------
+
+def ingest_pdf(pdf_path, section_names, reporting_period, product_name, single_filename, site_name):
+    #chunks = partition_pdf(filename=pqr_pdf,
+    #                   chunking_strategy="by_title",
+    #                  extract_images_in_pdf=True,
+    #                  infer_table_structure=True)
+    
+    section_chunks = chunk_pdf_by_sections(pdf_path, section_names, reporting_period, product_name, single_filename,  site_name)
+    return section_chunks
