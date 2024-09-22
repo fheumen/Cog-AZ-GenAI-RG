@@ -108,14 +108,16 @@ def extract_text_tables_images_by_sections(pdf_path, section_names, reporting_pe
                     if (len(current_section["text"] + line.strip()) > chunk_max) and (len(current_section["text"]) > chunk_min):
                          # Save a section chunk
                         current_section_tmp = current_section.copy()
+                        # create overlap to link chunk together
+                        current_section_tmp["text"] += line.strip() + "\n"
                         sections.append(current_section_tmp)
-                        print("tititititititi current_section")
-                        print(current_section)
+                        #print("tititititititi current_section")
+                        #print(current_section)
                         #print(current_section["section_name"])
                           # Start a new chunk for the same section
-                        print(sections)
+                        #print(sections)
                         current_section["text"] = ""
-                        print(sections)
+                        #print(sections)
                                        
                     current_section["text"] += line.strip() + "\n"
             
@@ -239,13 +241,14 @@ section_chunks[]
 
 # Display the results
 for section in section_chunks:
-    if section['section_name'] == 'batches reviewed':
+    if section['section_name'] == 'summary and conclusion':
        print(f"Section: {section['section_name']}")
        print(f"File Name: {section['file_name']}")
        print(f"Reporting Period: {section['reporting_period']}")
        print(f"Product Name: {section['product_name']}")
        print(f"Site Name: {section['site_name']}")
-       print(f"Content: {section['text'][:500]}...")  # Print first 500 characters for preview
+       #print(f"Content: {section['text'][:500]}...")  # Print first 500 characters for preview
+       print(f"Content: {section['text']}...")  # Print first 500 characters for preview
        print("\n--- End of Section ---\n")
 
 # COMMAND ----------
