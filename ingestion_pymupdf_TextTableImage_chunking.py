@@ -53,12 +53,6 @@ def extract_text_tables_images_by_sections(pdf_path, section_names, reporting_pe
     # Initialize data structure
     sections = []
     current_section = {
-        "section_name": None,
-        "text": "",
-        "images": [],
-        "tables": []
-    }
-    current_section = {
                         "section_name": None,
                         "file_name": single_filename,
                         "reporting_period": reporting_period,
@@ -110,11 +104,18 @@ def extract_text_tables_images_by_sections(pdf_path, section_names, reporting_pe
                 
                 # Add the line text to the current section if inside a section
                 if current_section["section_name"]:
+                    # check if the size of a chunk text into a section is within the chunk size
                     if (len(current_section["text"] + line.strip()) > chunk_max) and (len(current_section["text"]) > chunk_min):
-                         # Save the previous section
-                        sections.append(current_section)
-                          # Start a new section
+                         # Save a section chunk
+                        current_section_tmp = current_section.copy()
+                        sections.append(current_section_tmp)
+                        print("tititititititi current_section")
+                        print(current_section)
+                        #print(current_section["section_name"])
+                          # Start a new chunk for the same section
+                        print(sections)
                         current_section["text"] = ""
+                        print(sections)
                                        
                     current_section["text"] += line.strip() + "\n"
             
@@ -151,120 +152,6 @@ def extract_text_tables_images_by_sections(pdf_path, section_names, reporting_pe
     if current_section["section_name"]:
         sections.append(current_section)
     
-    return sections
-
-# COMMAND ----------
-
- # PyMuPDF
-def chunk_pdf_by_sections(pdf_path, section_names, reporting_period, product_name, single_filename, site_name):
-    """
-    Chunk a PDF based on a given list of section names.
-    
-    Args:
-        pdf_path (str): Path to the input PDF.
-        section_names (list): A list of section names to chunk the PDF by.
-    
-    Returns:
-        list: A list of dictionaries, each containing 'section_name' and 'content'.
-    """
-    
-    # Open the PDF
-    doc = fitz.open(pdf_path)
-    print(doc)
-    # Dictionary to hold chunks
-    sections = []
-    current_section = None
-    
-    # Normalize section names to avoid case sensitivity issues
-    normalized_section_names = [name.lower() for name in section_names]
-    print(normalized_section_names)
-
-    # Function to find if a text matches any section name
-    def match_section(text):
-        #normalized_text = ((text.strip().lower().split(' '))[1]).strip()
-        textsplit = text.strip().lower().split(' ')
-        if len(textsplit) > 1:          
-            firstchar = ((text.strip().lower().split(' '))[0]).strip()
-            restchar = (" ".join((text.strip().lower().split(' '))[1:])).strip()
-            if firstchar.isdigit():
-               return next((name for name in normalized_section_names if restchar.startswith(name)), None)
-        return None
-    
-    # Iterate through each page of the PDF
-    for page_num in range(2, len(doc)):
-        page = doc.load_page(page_num)
-        blocks = page.get_text("dict")['blocks']
-        print(blocks)
-        
-        for block in blocks:
-            if 'lines' in block:
-                block_text = ""
-                for line in block['lines']:
-                    for span in line['spans']:
-                        block_text += span['text'] + " "
-                        #print(block_text)
-
-                # Check if the current block starts a new section
-                matched_section = match_section(block_text)
-                if matched_section:
-                    # If a new section is found, save the previous section (if any)
-                    if current_section and current_section["content"].strip():
-                        sections.append(current_section)
-                    
-                    # Start a new section  reporting_period, product_name, single_filename
-                    current_section = {
-                        "section_name": matched_section,
-                        "file_name": single_filename,
-                        "reporting_period": reporting_period,
-                        "product_name": product_name,
-                        "site_name": site_name, 
-                        "page_num": page_num,
-                        "images": [],
-                        "tables": [],                        
-                        "content": ""
-                    }
-                elif current_section:
-                    # If inside a section, append text to the current section
-                    current_section["content"] += block_text.strip() + "\n"
-            
-            # Detect images
-            if 'image' in block:
-                image_index = block.get('image', None)
-                if image_index is not None:
-                    # Extract image
-                    #image = doc.extract_image(image_index)
-                    image_name = f"page_{page_num+1}_image_{len(current_section['images'])+1}.png"
-                    image_path = os.path.join(output_folder, image_name)
-                    
-                    # Save the image
-                    with open(image_path, "wb") as img_file:
-                        #img_file.write(image["image"])
-                        img_file.write(image_index)
-                    
-                    # Add the image metadata to the current section
-                    current_section["images"].append(image_name)
-            
-            # Detect tables (heuristic: based on horizontal lines or structured blocks)
-            if 'lines' in block:
-                if len(block['lines']) > 2 and len(block['lines'][0]['spans']) > 1:
-                    # Heuristic: if a block has more than 2 lines and multiple spans in the first line,
-                    # treat it as a table
-                    table_text = []
-                    for line in block['lines']:
-                        table_line = ""
-                        for span in line['spans']:
-                            table_line += span['text'] + " | "
-                        table_text.append(table_line.strip("| "))
-                    print("bobobobobobbobobobobobo")
-                    print(table_text)
-                    
-                    # Append the detected table to the current section
-                    current_section["tables"].append(table_text)
-
-    # Append the last section if it exists
-    if current_section and current_section["content"].strip():
-        sections.append(current_section)
-
     return sections
 
 # COMMAND ----------
@@ -346,19 +233,20 @@ if len(list_of_reporting_period) > 0:
 
 # COMMAND ----------
 
-section_chunks
+section_chunks[]
 
 # COMMAND ----------
 
 # Display the results
 for section in section_chunks:
-    print(f"Section: {section['section_name']}")
-    print(f"File Name: {section['file_name']}")
-    print(f"Reporting Period: {section['reporting_period']}")
-    print(f"Product Name: {section['product_name']}")
-    print(f"Site Name: {section['site_name']}")
-    print(f"Content: {section['text'][:500]}...")  # Print first 500 characters for preview
-    print("\n--- End of Section ---\n")
+    if section['section_name'] == 'batches reviewed':
+       print(f"Section: {section['section_name']}")
+       print(f"File Name: {section['file_name']}")
+       print(f"Reporting Period: {section['reporting_period']}")
+       print(f"Product Name: {section['product_name']}")
+       print(f"Site Name: {section['site_name']}")
+       print(f"Content: {section['text'][:500]}...")  # Print first 500 characters for preview
+       print("\n--- End of Section ---\n")
 
 # COMMAND ----------
 
