@@ -11,8 +11,8 @@ import shutil
 import json
 from dotenv import load_dotenv
 load_dotenv()
-from unstructured.partition.pdf import partition_pdf
-from unstructured.documents.elements import NarrativeText, Title, ListItem
+#from unstructured.partition.pdf import partition_pdf
+#from unstructured.documents.elements import NarrativeText, Title, ListItem
 import re
 import pdfplumber
 from docx import Document
@@ -21,14 +21,20 @@ import os
 from PIL import Image
 import io
 import shutil
+import tiktoken
 ##########################################
 from langchain.embeddings.openai import OpenAIEmbeddings
+#from langchain.embeddings import OpenAIEmbeddings
 #from langchain_openai import OpenAIEmbeddings
+from langchain_openai.embeddings import AzureOpenAIEmbeddings
 from langchain.chains import RetrievalQA
 from langchain.llms import OpenAI
 from pinecone import Pinecone
 from langchain.docstore.document import Document
 import openai
+from openai import AzureOpenAI
+import uuid  # for generating unique IDs
+import pandas as pd
 
 # COMMAND ----------
 
@@ -49,6 +55,23 @@ openai.api_version = os.environ.get("azure_openai_api_version")
 
 # COMMAND ----------
 
+client = AzureOpenAI(
+  api_key = os.environ.get("AZURE_OPENAI_API_KEY"),  
+  api_version = os.environ.get("azure_openai_api_version"),
+  azure_endpoint =os.environ.get("azure_openai_api_base")
+)
+
+# COMMAND ----------
+
+# Initialise Pinecone
+pinecone = Pinecone(
+   api_key=os.environ["PINECONE_API_KEY"],
+    environment=os.environ["PINECONE_ENVIRONMENT_REGION"],
+)
+
+
+# COMMAND ----------
+
 #### Check if an entry is already available in Pinececone.
 def pinecone_document_noexists(file_name, reporting_period, product_name, site_name, index_name):
     # initialize pinecone
@@ -61,25 +84,36 @@ def pinecone_document_noexists(file_name, reporting_period, product_name, site_n
 
     # Need to pass also the vector , but this can be just the embedding dimension
     results = index.query(
-        vector=[0] * 1536,
+        vector=[0] * 3072,
         top_k=1,
         include_metadata=True,
         #namespace=base_domain,
-        filter={"file_name": file_name,
+        filter={"file_name": file_name ,
                 "reporting_period": reporting_period,
                 'product_name': product_name, 
-                'site_name': site_name, 
+                'site_name': site_name , 
                 },
     )
 
     #time.sleep(30)
-
+    print(results["matches"])
     # Return True (0) if the id was not found, False otherwise
     if len(results["matches"]) > 0:
         return 0
     else:
         return 1
     # return results
+
+# COMMAND ----------
+
+def get_openai_embeddings(texts):
+    response = client.embeddings.create(
+        input=texts, 
+        model=deployment_name  # or your specific embedding model from Azure
+    )
+    #return [data["embedding"] for data in response['data']]
+    return ((response.data)[0]).embedding
+    #print(response.model_dump_json(indent=2))
 
 # COMMAND ----------
 
@@ -92,22 +126,23 @@ def pinecone_insert_docs(documents, index_name):
     index = pinecone.Index(index_name)    
 
     print(f"Going to insert {len(documents)} to Pinecone")
-    #embeddings = client.embeddings(model=deployment_name)
-    embeddings = OpenAIEmbeddings(#openai_api_key=openai.api_key, 
-                              model=deployment_name,  
-                              openai_api_base=openai.api_base, 
-                              openai_api_key=openai.api_key,
-                              openai_api_type = openai.api_type,
-                              max_retries=10
-                              )
-
-
-    Pinecone.from_documents(
-        documents,
-        embeddings,
-        index_name= index_name
-        #namespace=base_domain,
-    )
+    # Prepare embeddings and documents for insertion
+    for doc in documents:
+        embedding = get_openai_embeddings([doc["content"]])
+        #print(embedding)
+        #metadata = doc["metadata"] 
+        #print("****** print metadata")
+        #print(metadata)
+        #print(metadata["reporting_period"])
+        unique_id = str(uuid.uuid4())
+    # Upsert the document into Pinecone index reporting_period
+        index.upsert([
+        {
+            "id": unique_id,
+            "values": embedding,
+            "metadata": doc["metadata"]  # Metadata associated with the document
+        }
+    ])
     #Pinecone.flush()
     #time.sleep(30)
     
@@ -171,10 +206,10 @@ def extract_text_tables_images_by_sections(pdf_path, section_names, reporting_pe
                 if matched_section:
                     # Save the previous section
                     if current_section["section_name"]:
-                        doc = Document(
-                                page_content=current_section["text"],
-                                metadata=current_section,
-                                )
+                        doc = {
+                                "content": current_section["text"],
+                                "metadata": current_section,
+                        }
                         docs.append(doc)
                         sections.append(current_section)
                     
@@ -199,10 +234,10 @@ def extract_text_tables_images_by_sections(pdf_path, section_names, reporting_pe
                         current_section_tmp = current_section.copy()
                         current_section_tmp["text"] += line.strip() + "\n"
                         ################ create a doc object                        
-                        doc = Document(
-                                page_content=current_section_tmp["text"],
-                                metadata=current_section_tmp,
-                                )
+                        doc = {
+                                "content": current_section_tmp["text"],
+                                "metadata": current_section_tmp,
+                        }
                         docs.append(doc)
                         sections.append(current_section_tmp)
 
@@ -214,8 +249,25 @@ def extract_text_tables_images_by_sections(pdf_path, section_names, reporting_pe
             # Extract tables
             tables = page.extract_tables()
             if tables:
-                for table in tables:
-                    current_section["tables"].append(table)
+                #for table in tables:                  
+
+                for table_index, table in enumerate(tables):
+                # Convert the table into a pandas DataFrame
+                   df = pd.DataFrame(table)
+                
+                   # Create a unique filename for each table (based on page number and table index)
+                   sfilename = single_filename.split(".")[0]
+                   table_filename = f"{sfilename}_table_page_{page_num+1}_table_{table_index+1}.csv"
+                   output_csv = f"{output_dir}/{table_filename}"
+                   tmp_file = "/tmp/"+ table_filename
+                
+                   # Save the DataFrame as a CSV file
+                   df.to_csv(tmp_file, index=False, header=True)
+                   shutil.move(tmp_file, output_csv )
+                
+                   #table_count += 1
+                   #print(f"Table {table_count} saved to {output_csv}")
+                   current_section["tables"].append(output_csv)
             
             # Extract images
             if page.images:
@@ -232,8 +284,8 @@ def extract_text_tables_images_by_sections(pdf_path, section_names, reporting_pe
                     # Save the image to a file
                     sfilename = single_filename.split(".")[0]
                     image_filename = f"{sfilename}_page_{page_num+1}_img_{img_idx+1}.{image_ext}"
-                    print("titititititti")
-                    print(image_filename)
+                    #print("titititititti")
+                    #print(image_filename)
                     image_path =  f"{output_dir}/{image_filename}"
                     tmp_file = "/tmp/"+ image_filename
                     image_bytes.save(image_path , "PNG")
@@ -242,10 +294,10 @@ def extract_text_tables_images_by_sections(pdf_path, section_names, reporting_pe
     
     # Append the last section
     if current_section["section_name"]:
-        doc = Document(
-                                page_content=current_section_tmp["text"],
-                                metadata=current_section_tmp,
-                                )
+        doc = {
+                                "content": current_section["text"],
+                                "metadata": current_section,
+                        }
         docs.append(doc)
         sections.append(current_section)
     
@@ -284,7 +336,7 @@ def ingest_pdf(pdf_path, section_names, reporting_period, product_name, single_f
     #                   chunking_strategy="by_title",
     #                  extract_images_in_pdf=True,
     #                  infer_table_structure=True)
-    extract_text_tables_images_by_sections
+    #extract_text_tables_images_by_sections
     #section_chunks = chunk_pdf_by_sections(pdf_path, section_names, reporting_period, product_name, single_filename,  site_name)
     section_chunks = extract_text_tables_images_by_sections(pdf_path, section_names, reporting_period, product_name, single_filename,  site_name, output_dir, chunk_min, chunk_max)
     return section_chunks
@@ -300,7 +352,6 @@ def ingest_docx(filename):
 section_chunks = []
 input_folder = f"{INTPUTS_PATH}"  ### intput directory, where all intputs  files are save
 output_folder = f"{OUTPUTS_PATH}"  ### output directory, where all output files are save
-print(input_folder)
 list_of_reporting_period = get_list_of_files(input_folder)
 
 if len(list_of_reporting_period) > 0:
@@ -309,38 +360,40 @@ if len(list_of_reporting_period) > 0:
     ###
     for reporting_period in list_of_reporting_period:
         list_of_product_name = get_list_of_files(f"{input_folder}/{reporting_period}")
-        print(f"{input_folder}/{reporting_period}")
 
         for product_name in list_of_product_name: 
             list_of_files = get_list_of_files(f"{input_folder}/{reporting_period}/{product_name}")
-            print(f"{input_folder}/{reporting_period}/{product_name}")
             output_path_images = f"{input_folder}/{reporting_period}/{product_name}"
             for single_filename in list_of_files:
                 filename_to_proceed = f"{input_folder}/{reporting_period}/{product_name}/{single_filename}"
-                print(f"{input_folder}/{reporting_period}/{product_name}/{single_filename}")
+                #print(f"{input_folder}/{reporting_period}/{product_name}/{single_filename}")
                 site_name = get_site_name(single_filename)
               
                  #### if the doc link (pdf, docx, txt, doc) was already saved in Pinecone, then ignore, otherwise insert.
                 if (pinecone_document_noexists(single_filename, reporting_period, product_name, site_name, INDEX_NAME)== 1):
-                    try:
+                    #sec_doc = ingest_pdf(filename_to_proceed, section_names, reporting_period, product_name, single_filename, site_name, #output_path_images, 1024, 1500)
+                    #try:
                         if(single_filename.endswith(".pdf")): 
                            sec_doc = ingest_pdf(filename_to_proceed, section_names, reporting_period, product_name, single_filename, site_name, output_path_images, 1024, 1500)
                            section_chunks = section_chunks  + sec_doc["sections"]
                           
                         else: 
                             if single_filename.endswith(".docx"):
-                              section_chunks = section_chunks + (ingest_docx(filename_to_proceed, section_names, reporting_period, product_name, single_filename, site_name))
-                   
+                              section_chunks = section_chunks + (ingest_docx(filename_to_proceed, section_names, reporting_period, product_name, single_filename, site_name))                   
                         pinecone_insert_docs(sec_doc["documents"], INDEX_NAME)
 
-                    except:
-                        continue
+                    #except:
+                        #print("tititititititi")
+                        #continue
                
                 
 
 # COMMAND ----------
 
-section_chunks[]
+#section_chunks
+sec_doc["sections"]
+#
+# sec_doc["sections"]["section_name"=='starting and packaging materials']
 
 # COMMAND ----------
 
