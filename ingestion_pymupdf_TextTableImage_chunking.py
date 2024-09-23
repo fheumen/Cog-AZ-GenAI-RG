@@ -21,6 +21,14 @@ import os
 from PIL import Image
 import io
 import shutil
+##########################################
+from langchain.embeddings.openai import OpenAIEmbeddings
+#from langchain_openai import OpenAIEmbeddings
+from langchain.chains import RetrievalQA
+from langchain.llms import OpenAI
+from pinecone import Pinecone
+from langchain.docstore.document import Document
+import openai
 
 # COMMAND ----------
 
@@ -30,6 +38,81 @@ storageAccountAccessKey = os.environ.get("storageAccountAccessKey")
 print(storageAccountAccessKey)
 mount_blob_storage("inputs")
 mount_blob_storage("outputs")
+
+# COMMAND ----------
+
+deployment_name = os.environ.get("embedding_deployment_name")
+openai.api_type = os.environ.get("azure_openai_api_type")
+openai.api_key = os.environ.get("AZURE_OPENAI_API_KEY")
+openai.api_base = os.environ.get("azure_openai_api_base")
+openai.api_version = os.environ.get("azure_openai_api_version")
+
+# COMMAND ----------
+
+#### Check if an entry is already available in Pinececone.
+def pinecone_document_noexists(file_name, reporting_period, product_name, site_name, index_name):
+    # initialize pinecone
+    # pinecone.init(
+    #    api_key=PINECONE_API_KEY,  # find at app.pinecone.io
+    #    environment=PINECONE_API_ENV # next to api key in console
+    # )
+
+    index = pinecone.Index(index_name)
+
+    # Need to pass also the vector , but this can be just the embedding dimension
+    results = index.query(
+        vector=[0] * 1536,
+        top_k=1,
+        include_metadata=True,
+        #namespace=base_domain,
+        filter={"file_name": file_name,
+                "reporting_period": reporting_period,
+                'product_name': product_name, 
+                'site_name': site_name, 
+                },
+    )
+
+    #time.sleep(30)
+
+    # Return True (0) if the id was not found, False otherwise
+    if len(results["matches"]) > 0:
+        return 0
+    else:
+        return 1
+    # return results
+
+# COMMAND ----------
+
+#### Insert content of an url into Pinecone
+def pinecone_insert_docs(documents, index_name):
+    from langchain.vectorstores import Pinecone
+    from langchain.embeddings.openai import OpenAIEmbeddings
+
+    
+    index = pinecone.Index(index_name)    
+
+    print(f"Going to insert {len(documents)} to Pinecone")
+    #embeddings = client.embeddings(model=deployment_name)
+    embeddings = OpenAIEmbeddings(#openai_api_key=openai.api_key, 
+                              model=deployment_name,  
+                              openai_api_base=openai.api_base, 
+                              openai_api_key=openai.api_key,
+                              openai_api_type = openai.api_type,
+                              max_retries=10
+                              )
+
+
+    Pinecone.from_documents(
+        documents,
+        embeddings,
+        index_name= index_name
+        #namespace=base_domain,
+    )
+    #Pinecone.flush()
+    #time.sleep(30)
+    
+    # Pinecone.from_documents(documents, embeddings, index_name=INDEX_NAME)
+    print("****** Added to Pinecone vectorstore vector")
 
 # COMMAND ----------
 
@@ -52,6 +135,7 @@ def extract_text_tables_images_by_sections(pdf_path, section_names, reporting_pe
     
     # Initialize data structure
     sections = []
+    docs = [] ### list of document object for Vector Database
     current_section = {
                         "section_name": None,
                         "file_name": single_filename,
@@ -87,6 +171,11 @@ def extract_text_tables_images_by_sections(pdf_path, section_names, reporting_pe
                 if matched_section:
                     # Save the previous section
                     if current_section["section_name"]:
+                        doc = Document(
+                                page_content=current_section["text"],
+                                metadata=current_section,
+                                )
+                        docs.append(doc)
                         sections.append(current_section)
                     
                     # Start a new section
@@ -108,14 +197,15 @@ def extract_text_tables_images_by_sections(pdf_path, section_names, reporting_pe
                     if (len(current_section["text"] + line.strip()) > chunk_max) and (len(current_section["text"]) > chunk_min):
                          # Save a section chunk
                         current_section_tmp = current_section.copy()
-                        # create overlap to link chunk together
                         current_section_tmp["text"] += line.strip() + "\n"
+                        ################ create a doc object                        
+                        doc = Document(
+                                page_content=current_section_tmp["text"],
+                                metadata=current_section_tmp,
+                                )
+                        docs.append(doc)
                         sections.append(current_section_tmp)
-                        #print("tititititititi current_section")
-                        #print(current_section)
-                        #print(current_section["section_name"])
-                          # Start a new chunk for the same section
-                        #print(sections)
+
                         current_section["text"] = ""
                         #print(sections)
                                        
@@ -152,9 +242,14 @@ def extract_text_tables_images_by_sections(pdf_path, section_names, reporting_pe
     
     # Append the last section
     if current_section["section_name"]:
+        doc = Document(
+                                page_content=current_section_tmp["text"],
+                                metadata=current_section_tmp,
+                                )
+        docs.append(doc)
         sections.append(current_section)
     
-    return sections
+    return {"sections":sections, "documents": docs}
 
 # COMMAND ----------
 
@@ -221,16 +316,26 @@ if len(list_of_reporting_period) > 0:
             print(f"{input_folder}/{reporting_period}/{product_name}")
             output_path_images = f"{input_folder}/{reporting_period}/{product_name}"
             for single_filename in list_of_files:
-               filename_to_proceed = f"{input_folder}/{reporting_period}/{product_name}/{single_filename}"
-               print(f"{input_folder}/{reporting_period}/{product_name}/{single_filename}")
-               site_name = get_site_name(single_filename)
-               print(site_name)
-               if(single_filename.endswith(".pdf")): 
-                   print("tototottotototo")                  
-                   section_chunks = section_chunks  + (ingest_pdf(filename_to_proceed, section_names, reporting_period, product_name, single_filename, site_name, output_path_images, 1024, 1500))
-               else: 
-                   if single_filename.endswith(".docx"):
-                      section_chunks = section_chunks + (ingest_docx(filename_to_proceed, section_names, reporting_period, product_name, single_filename, site_name))
+                filename_to_proceed = f"{input_folder}/{reporting_period}/{product_name}/{single_filename}"
+                print(f"{input_folder}/{reporting_period}/{product_name}/{single_filename}")
+                site_name = get_site_name(single_filename)
+              
+                 #### if the doc link (pdf, docx, txt, doc) was already saved in Pinecone, then ignore, otherwise insert.
+                if (pinecone_document_noexists(single_filename, reporting_period, product_name, site_name, INDEX_NAME)== 1):
+                    try:
+                        if(single_filename.endswith(".pdf")): 
+                           sec_doc = ingest_pdf(filename_to_proceed, section_names, reporting_period, product_name, single_filename, site_name, output_path_images, 1024, 1500)
+                           section_chunks = section_chunks  + sec_doc["sections"]
+                          
+                        else: 
+                            if single_filename.endswith(".docx"):
+                              section_chunks = section_chunks + (ingest_docx(filename_to_proceed, section_names, reporting_period, product_name, single_filename, site_name))
+                   
+                        pinecone_insert_docs(sec_doc["documents"], INDEX_NAME)
+
+                    except:
+                        continue
+               
                 
 
 # COMMAND ----------
