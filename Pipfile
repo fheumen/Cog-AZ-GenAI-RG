@@ -1,0 +1,29 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+pinecone-client = "==3.2.2"
+streamlit = "==1.24.0"
+openai = "==1.31.0"
+langchain-community = "==0.2.1"
+langchain-openai = "==0.1.8"
+langfuse = "==2.33.1"
+langchain-pinecone = "==0.1.1"
+langsmith = "==0.1.68"
+langchain-core = "==0.2.3"
+python-dotenv = "*"
+pypdf = "*"
+pypdf2 = "*"
+black = "*"
+pandas = "*"
+streamlit-chat = "==0.1.1"
+ragas = "*"
+tiktoken = "*"
+lark = "*"
+
+[dev-packages]
+
+[requires]
+python_version = "3.12"
