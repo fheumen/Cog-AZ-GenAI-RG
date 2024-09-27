@@ -14,6 +14,7 @@ load_dotenv()
 #from unstructured.partition.pdf import partition_pdf
 #from unstructured.documents.elements import NarrativeText, Title, ListItem
 import re
+from datetime import datetime
 import pdfplumber
 from docx import Document
 from docx.shared import Inches
@@ -52,6 +53,12 @@ openai.api_type = os.environ.get("azure_openai_api_type")
 openai.api_key = os.environ.get("AZURE_OPENAI_API_KEY")
 openai.api_base = os.environ.get("azure_openai_api_base")
 openai.api_version = os.environ.get("azure_openai_api_version")
+
+# COMMAND ----------
+
+input_folder = f"{INTPUTS_PATH}"  ### intput directory, where all intputs  files are save
+output_folder = f"{OUTPUTS_PATH}"  ### output directory, where all output files are save
+upload_folder = f"{UPLOAD_TMP_PATH}"
 
 # COMMAND ----------
 
@@ -151,8 +158,52 @@ def pinecone_insert_docs(documents, index_name):
 
 # COMMAND ----------
 
+################### Extract reporting period, product name and site name from the first page in a pqr report
+def extract_reporting_period_product_name_site_name(first_page_text, date_pattern, site_names, product_names):
+
+    site_name = None
+    product_name = None
+    reporting_period_startdate = None
+    reporting_period_enddate = None
+    ###### Extract Site Name from the first page
+    for site in site_names:
+        if site.lower() in first_page_text.lower():
+            site_name = site
+ 
+    ##### Extract Product Name from the first page
+    for product in product_names:
+        if product.lower() in first_page_text.lower():
+            product_name = product
+
+    # Extract Reporting Period from the first page
+    match = re.search(date_pattern, first_page_text)
+    if match:
+            # Check which format of date was matched
+        if match.group(1) and match.group(2):
+            start_date_str, end_date_str = match.group(1), match.group(2)
+            date_format = '%d %b %Y'
+        elif match.group(3) and match.group(4):
+             start_date_str, end_date_str = match.group(3), match.group(4)
+             date_format = '%d %b %Y'
+        elif match.group(5) and match.group(6):
+            start_date_str, end_date_str = match.group(5), match.group(6)
+            date_format = '%B %d, %Y'
+            
+            # Convert to datetime objects and format as desired (e.g., 14Nov2022)
+        reporting_period_startdate = datetime.strptime(start_date_str, date_format).strftime('%d%b%Y')
+        reporting_period_enddate = datetime.strptime(end_date_str, date_format).strftime('%d%b%Y')
+            
+        #return reporting_period_startdate, reporting_period_enddate
+    return reporting_period_startdate, reporting_period_enddate, product_name, site_name
+
+# COMMAND ----------
+
 def extract_text_tables_images_by_sections(pdf_path, section_names, reporting_period, product_name, single_filename, site_name, output_dir,
                                            chunk_min, chunk_max):
+# extract_text_tables_images_by_sections(filename_to_proceed, section_names, reporting_period, product_name, pqr_file_name, site_name, output_path_images, 1024, 1500)
+
+#def extract_text_tables_images_by_sections(pdf_path, section_names, single_filename, output_dir,
+#                                           chunk_min, chunk_max):
     """
     Extract text, tables, and images from a PDF based on a given list of section names.
     
@@ -165,18 +216,37 @@ def extract_text_tables_images_by_sections(pdf_path, section_names, reporting_pe
         list: A list of dictionaries, each containing 'section_name', 'text', 'images', and 'tables'.
     """
     
+    ####
+    header_flag = 0
+    footer_flag = 0
+
     # Normalize section names for matching
     normalized_section_names = [name.lower() for name in section_names]
     
     # Initialize data structure
     sections = []
+    chunk_sections = []
     docs = [] ### list of document object for Vector Database
     current_section = {
                         "section_name": None,
                         "file_name": single_filename,
-                        "reporting_period": reporting_period,
-                        "product_name": product_name,
-                        "site_name": site_name, 
+                        "reporting_period_startdate": None,
+                        "reporting_period_enddate": None,
+                        "product_name": None,
+                        "site_name": None, 
+                        "page_num": None,
+                        "images": [],
+                        "tables": [],                        
+                        "text": ""
+                    }
+    
+    chunk_current_section = {
+                        "section_name": None,
+                        "file_name": single_filename,
+                        "reporting_period_startdate": None,
+                        "reporting_period_enddate": None,
+                        "product_name": None,
+                        "site_name": None, 
                         "page_num": None,
                         "images": [],
                         "tables": [],                        
@@ -198,26 +268,64 @@ def extract_text_tables_images_by_sections(pdf_path, section_names, reporting_pe
     with pdfplumber.open(pdf_path) as pdf:
         for page_num, page in enumerate(pdf.pages):
             text = page.extract_text() or ""
+            if page_num == 0: ##### Extract reporting period, product name and site name from the first page
+               reporting_period_startdate, reporting_period_enddate, product_name, site_name = extract_reporting_period_product_name_site_name(text, date_pattern, site_names, product_names)
             
+            elif page_num == 1: ##### Jump the Table of Content
+                continue
+                      
             # Split text into lines for matching section names
             lines = text.split("\n")
             for line in lines:
+                ######### Skip the header and footer
+                if re.search(header_pattern,line): 
+                    header_flag = 1
+                    continue
+                if header_flag == 1:
+                    header_flag = 0                    
+                    continue
+                if re.search(footer_pattern,line): 
+                    footer_flag = 1
+                    continue
+                if footer_flag == 1: 
+                    footer_flag == 0                   
+                    continue
+
+            ### No Header, No Footer, No Page 1
                 matched_section = match_section(line)
                 if matched_section:
                     # Save the previous section
-                    if current_section["section_name"]:
+                    if chunk_current_section["section_name"]:
                         doc = {
-                                "content": current_section["text"],
-                                "metadata": current_section,
+                                "content": chunk_current_section["text"],
+                                "metadata": chunk_current_section,
                         }
                         docs.append(doc)
+                        chunk_sections.append(chunk_current_section)
+
+                    if current_section["section_name"]:
                         sections.append(current_section)
                     
                     # Start a new section
                     current_section = {
                         "section_name": matched_section,
                         "file_name": single_filename,
-                        "reporting_period": reporting_period,
+                        "reporting_period_startdate": reporting_period_startdate,
+                        "reporting_period_enddate": reporting_period_enddate,
+                        "product_name": product_name,
+                        "site_name": site_name, 
+                        "page_num": page_num,
+                        "images": [],
+                        "tables": [],                        
+                        "text": ""
+                    }
+
+                    # Start a new section chunk
+                    chunk_current_section = {
+                        "section_name": matched_section,
+                        "file_name": single_filename,
+                        "reporting_period_startdate": reporting_period_startdate,
+                        "reporting_period_enddate": reporting_period_enddate,
                         "product_name": product_name,
                         "site_name": site_name, 
                         "page_num": page_num,
@@ -228,23 +336,29 @@ def extract_text_tables_images_by_sections(pdf_path, section_names, reporting_pe
                 
                 # Add the line text to the current section if inside a section
                 if current_section["section_name"]:
+                    current_section["text"] += line.strip() + "\n"
+                
+                if chunk_current_section["section_name"]:
+                    #current_section["text"] += line.strip() + "\n"
                     # check if the size of a chunk text into a section is within the chunk size
-                    if (len(current_section["text"] + line.strip()) > chunk_max) and (len(current_section["text"]) > chunk_min):
+                    if (len(chunk_current_section["text"] + line.strip()) > chunk_max) and (len(chunk_current_section["text"]) > chunk_min):
                          # Save a section chunk
-                        current_section_tmp = current_section.copy()
-                        current_section_tmp["text"] += line.strip() + "\n"
+                        chunk_current_section_tmp = chunk_current_section.copy()
+                        chunk_current_section_tmp["text"] += line.strip() + "\n"
                         ################ create a doc object                        
                         doc = {
-                                "content": current_section_tmp["text"],
-                                "metadata": current_section_tmp,
+                                "content": chunk_current_section_tmp["text"],
+                                "metadata": chunk_current_section_tmp,
                         }
                         docs.append(doc)
-                        sections.append(current_section_tmp)
+                        chunk_sections.append(chunk_current_section_tmp)
+                        #sections.append(current_section_tmp)
 
-                        current_section["text"] = ""
-                        #print(sections)
+                        chunk_current_section["text"] = ""
+                    
+                    chunk_current_section["text"] += line.strip() + "\n"    #print(sections)
                                        
-                    current_section["text"] += line.strip() + "\n"
+                    
             
             # Extract tables
             tables = page.extract_tables()
@@ -295,105 +409,121 @@ def extract_text_tables_images_by_sections(pdf_path, section_names, reporting_pe
     # Append the last section
     if current_section["section_name"]:
         doc = {
-                                "content": current_section["text"],
-                                "metadata": current_section,
+                                "content": chunk_current_section["text"],
+                                "metadata": chunk_current_section,
                         }
         docs.append(doc)
         sections.append(current_section)
+        chunk_sections.append(chunk_current_section)
     
-    return {"sections":sections, "documents": docs}
+    return {"sections":sections, "chunk_sections": chunk_sections,  "documents": docs, "reporting_period_startdate": reporting_period_startdate, "reporting_period_enddate": reporting_period_enddate, "product_name": product_name, "site_name": site_name}
 
 # COMMAND ----------
 
-normalized_section_names = [name.lower() for name in section_names]
-
-def match_section(text):
-        normalized_text = ((text.strip().lower().split(' '))[1]).strip()
-        print(normalized_text )
-        return next((name for name in normalized_section_names if normalized_text == name ), None)
-
-block_text = "1   SUMMARY AND CONCLUSION"  
-a = ((block_text.strip().lower().split(' '))[0]).strip()
-a.isdigit()
-(" ".join((block_text.strip().lower().split(' '))[1:])).strip()
-#matched_section = match_section(block_text)
-#if matched_section:
-#    print('Fabrice')
-print(range(2, 4 , 1))
+header = "REP-0234010 v1.0 Status: Approved Approved Date: 07 Feb 2024 Page 4 of 105"
+header_pattern = r'REP-\d{7}\sv\d{1}.\d{1}\sStatus: Approved Approved Date:\s\d{1,2}\s\w+\s\d{4}\sPage\s\d{1,3}\sof\s\d{1,3}'
+footer_pattern = r'check this is the latest version of the document before use.'
+match = re.search(header_pattern, header)
+if match: print("totototo")
 
     
 
 # COMMAND ----------
 
-def get_site_name(file_name):  
-    return ((((file_name.split('-'))[1]).split('.'))[0]).strip().lower()
+def ingest_pqr_file(tmp_pqr_pdf_path):
 
-
-# COMMAND ----------
-
-def ingest_pdf(pdf_path, section_names, reporting_period, product_name, single_filename, site_name, output_dir, chunk_min, chunk_max):
-    #chunks = partition_pdf(filename=pqr_pdf,
-    #                   chunking_strategy="by_title",
-    #                  extract_images_in_pdf=True,
-    #                  infer_table_structure=True)
-    #extract_text_tables_images_by_sections
-    #section_chunks = chunk_pdf_by_sections(pdf_path, section_names, reporting_period, product_name, single_filename,  site_name)
-    section_chunks = extract_text_tables_images_by_sections(pdf_path, section_names, reporting_period, product_name, single_filename,  site_name, output_dir, chunk_min, chunk_max)
-    return section_chunks
-    
+    with pdfplumber.open(tmp_pqr_pdf_path) as pdf:
+        # Get the first page
+        first_page = pdf.pages[0]
+        # Extract text from the first page
+        first_page_text = first_page.extract_text()
+        return extract_reporting_period_product_name_site_name(first_page_text, date_pattern, site_names, product_names)
 
 # COMMAND ----------
 
-def ingest_docx(filename):
+def Ingest_phase_1(upload_folder, pqr_file):
+    tmp_pqr_pdf_path = f"{upload_folder}/{pqr_file }"        
+    reporting_period_startdate, reporting_period_enddate, product_name, site_name = ingest_pqr_file(tmp_pqr_pdf_path)
+    reporting_period = reporting_period_startdate + "_" +  reporting_period_enddate
+
+#### create the directory structure if not exist: reporting_period/product_name 
+    input_folder_pqr_reporting_period = f"{input_folder}/{product_name}"
+    input_folder_pqr_reporting_period_product_name = f"{input_folder}/{product_name}/{reporting_period}"
+#print(input_folder_pqr_reporting_period_product_name )
+    check_create_dir(input_folder_pqr_reporting_period)
+    check_create_dir(input_folder_pqr_reporting_period_product_name)
+
+#### move file from tmp to reporting_period/product_name 
+    shutil.move(tmp_pqr_pdf_path, f"{input_folder_pqr_reporting_period_product_name}/{pqr_file}")
+    return reporting_period, product_name, site_name
 
 # COMMAND ----------
 
-# Dictionary to hold chunks
-section_chunks = []
-input_folder = f"{INTPUTS_PATH}"  ### intput directory, where all intputs  files are save
-output_folder = f"{OUTPUTS_PATH}"  ### output directory, where all output files are save
-list_of_reporting_period = get_list_of_files(input_folder)
-
-if len(list_of_reporting_period) > 0:
-######## iSRS Extration of docx documents
-    #logging.info('Extraction Job Started...')
-    ###
-    for reporting_period in list_of_reporting_period:
-        list_of_product_name = get_list_of_files(f"{input_folder}/{reporting_period}")
-
-        for product_name in list_of_product_name: 
-            list_of_files = get_list_of_files(f"{input_folder}/{reporting_period}/{product_name}")
-            output_path_images = f"{input_folder}/{reporting_period}/{product_name}"
-            for single_filename in list_of_files:
-                filename_to_proceed = f"{input_folder}/{reporting_period}/{product_name}/{single_filename}"
-                #print(f"{input_folder}/{reporting_period}/{product_name}/{single_filename}")
-                site_name = get_site_name(single_filename)
-              
-                 #### if the doc link (pdf, docx, txt, doc) was already saved in Pinecone, then ignore, otherwise insert.
-                if (pinecone_document_noexists(single_filename, reporting_period, product_name, site_name, INDEX_NAME)== 1):
-                    #sec_doc = ingest_pdf(filename_to_proceed, section_names, reporting_period, product_name, single_filename, site_name, #output_path_images, 1024, 1500)
-                    #try:
-                        if(single_filename.endswith(".pdf")): 
-                           sec_doc = ingest_pdf(filename_to_proceed, section_names, reporting_period, product_name, single_filename, site_name, output_path_images, 1024, 1500)
-                           section_chunks = section_chunks  + sec_doc["sections"]
+##### Pick the files a dedicated/created input directory, chunked, embbed and save them in a Vector DataBase
+def Ingest_phase_2(product_name, reporting_period, site_name, pqr_file_name):
+     filename_to_proceed = f"{input_folder}/{product_name}/{reporting_period}/{pqr_file_name}" 
+     output_path_images_tables = f"{input_folder}/{product_name}/{reporting_period}"             
+     #### if the doc link (pdf, docx, txt, doc) was already saved in Pinecone, then ignore, otherwise insert.
+     if (pinecone_document_noexists(pqr_file_name, reporting_period, product_name, site_name, INDEX_NAME)== 1):
+        if(pqr_file_name.endswith(".pdf")): 
+            sec_doc = extract_text_tables_images_by_sections(filename_to_proceed, section_names, reporting_period, product_name, pqr_file_name, site_name, output_path_images_tables, 1024, 1500)
+            return sec_doc
+           
+            #section_chunks = section_chunks  + sec_doc["sections"]
                           
-                        else: 
-                            if single_filename.endswith(".docx"):
-                              section_chunks = section_chunks + (ingest_docx(filename_to_proceed, section_names, reporting_period, product_name, single_filename, site_name))                   
-                        pinecone_insert_docs(sec_doc["documents"], INDEX_NAME)
+        else:
+             if single_filename.endswith(".docx"):
+                section_chunks = section_chunks + (ingest_docx(filename_to_proceed, section_names, reporting_period, product_name, single_filename, site_name))                   
+        #pinecone_insert_docs(sec_doc["documents"], INDEX_NAME)
+    
 
-                    #except:
-                        #print("tititititititi")
-                        #continue
-               
-                
 
 # COMMAND ----------
 
-#section_chunks
-sec_doc["sections"]
-#
-# sec_doc["sections"]["section_name"=='starting and packaging materials']
+def save_chunks_to_json(chunks, json_filename):
+    """Save the chunked sections to a JSON file."""
+    tmp_file = "/tmp/" + json_filename
+    output_path = f"{output_folder}/{json_filename}"
+    with open(tmp_file, "w") as json_file:
+        json.dump(chunks, json_file)
+    shutil.move(tmp_file, output_path)
+
+# COMMAND ----------
+
+#return {"sections":sections, "chunk_sections": chunk_sections,  "documents": docs, "reporting_period_startdate": reporting_period_startdate, "reporting_period_enddate": #reporting_period_enddate, "product_name": product_name, "site_name": site_name}
+sec_doc = Ingest_phase_2("Fasenra", "14Nov2022_13Nov2023", "fmc", "Sample Source document - FMC.pdf")
+
+# COMMAND ----------
+
+sec_doc["chunk_sections"]
+
+# COMMAND ----------
+
+##### Pick the files from tmp directory and save in a dedicated/created input directory
+def Ingest_PQR(upload_folder):
+    list_of_upload_files = get_list_of_files(upload_folder)
+    sections = []
+    section_chunks = []
+    if len(list_of_upload_files) > 1:
+       for pqr_file_name in list_of_upload_files:
+            if pqr_file_name.endswith(".pdf") or pqr_file_name.endswith(".docx"):
+              reporting_period, product_name, site_name = Ingest_phase_1(upload_folder, pqr_file_name)
+              sec_doc = Ingest_phase_2(product_name, reporting_period, site_name, pqr_file_name)
+           
+              sections = sections + sec_doc["sections"]
+              section_chunks = section_chunks  + sec_doc["chunk_sections"]
+
+              pinecone_insert_docs(sec_doc["documents"], INDEX_NAME)
+           
+    ispr_json_filename = "ispr" + "-" + product_name + "-" + reporting_period + ".json"
+    ispr_chunk_json_filename = "ispr_chunk" + "-" + product_name + "-" +reporting_period + ".json"
+    
+    save_chunks_to_json(sections, ispr_json_filename)
+    save_chunks_to_json(section_chunks, ispr_chunk_json_filename)
+
+# COMMAND ----------
+
+Ingest_PQR(upload_folder)
 
 # COMMAND ----------
 
@@ -408,29 +538,3 @@ for section in section_chunks:
        #print(f"Content: {section['text'][:500]}...")  # Print first 500 characters for preview
        print(f"Content: {section['text']}...")  # Print first 500 characters for preview
        print("\n--- End of Section ---\n")
-
-# COMMAND ----------
-
-
-def save_chunks_to_json(chunks, output_path):
-    """Save the chunked sections to a JSON file."""
-    tmp_file = "/tmp/"+"pqr_section_chunks_minmax.json"
-    with open(tmp_file, "w") as json_file:
-        json.dump(chunks, json_file, indent=4)
-    shutil.move(tmp_file, output_path)
-
-# Save to a JSON file
-output_path = f"{output_folder}/pqr_section_chunks_minmax.json"
-
-save_chunks_to_json(section_chunks, output_path)
-
-# COMMAND ----------
-
-def ingest_pdf(pdf_path, section_names, reporting_period, product_name, single_filename, site_name):
-    #chunks = partition_pdf(filename=pqr_pdf,
-    #                   chunking_strategy="by_title",
-    #                  extract_images_in_pdf=True,
-    #                  infer_table_structure=True)
-    
-    section_chunks = chunk_pdf_by_sections(pdf_path, section_names, reporting_period, product_name, single_filename,  site_name)
-    return section_chunks
