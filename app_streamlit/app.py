@@ -148,6 +148,7 @@ def build_form(col1, col2):
                 What where the batch numbers manufactured at the site fmc for the product Fasenra during the reporting period between 14Nov2022 and 13Nov2013?
                 How many batches were fully release at the site fmc  for the product Fasenra during the reporting period between 14Nov2022 and 13Nov2013?
                 How many batches were outside of the specifications for the product Fasenra during the reporting period between 14Nov2022 and 13Nov2013?
+                Summarize the section summary  for the product Fasenra during the reporting period between 14Nov2022 and 13Nov2013?
                 """
                 )
     with col2:

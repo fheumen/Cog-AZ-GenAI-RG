@@ -96,6 +96,13 @@ class ReportGeneration:
                     "filter": "and(eq('reporting_period', '14Nov2022_13Nov2013'), in('product_name', ['Fasenra']))",
                 },
             ),
+            (
+                "Summarize the section summary and conclusion for the product Fasenra during the reporting period between 14Nov2022 and 13Nov2013?",
+                {
+                    "query": "summarize the section summary and conclusion",
+                    "filter": "and(eq('reporting_period', '14Nov2022_13Nov2013'), in('product_name', ['Fasenra']), in('section_name', ['summary and conclusion']))",
+                },
+            ),
 
 
             # (
