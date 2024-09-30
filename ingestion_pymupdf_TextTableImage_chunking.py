@@ -1,5 +1,5 @@
 # Databricks notebook source
-# MAGIC %run ./Utils/StorageAccountAccess_Secrets
+# MAGIC %run ./Utils/StorageAccountAccess_Secrets__
 
 # COMMAND ----------
 
@@ -261,7 +261,8 @@ def extract_text_tables_images_by_sections(pdf_path, section_names, reporting_pe
             firstchar = ((text.strip().lower().split(' '))[0]).strip()
             restchar = (" ".join((text.strip().lower().split(' '))[1:])).strip()
             if firstchar.isdigit():
-               return next((name for name in normalized_section_names if restchar.startswith(name)), None)
+               #return next((name for name in normalized_section_names if restchar.startswith(name)), None)
+               return next((name for name in normalized_section_names if name in restchar), None)
         return None
     
     # Open the PDF using pdfplumber
@@ -288,7 +289,7 @@ def extract_text_tables_images_by_sections(pdf_path, section_names, reporting_pe
                     footer_flag = 1
                     continue
                 if footer_flag == 1: 
-                    footer_flag == 0                   
+                    footer_flag = 0                   
                     continue
 
             ### No Header, No Footer, No Page 1
@@ -420,11 +421,11 @@ def extract_text_tables_images_by_sections(pdf_path, section_names, reporting_pe
 
 # COMMAND ----------
 
-header = "REP-0234010 v1.0 Status: Approved Approved Date: 07 Feb 2024 Page 4 of 105"
-header_pattern = r'REP-\d{7}\sv\d{1}.\d{1}\sStatus: Approved Approved Date:\s\d{1,2}\s\w+\s\d{4}\sPage\s\d{1,3}\sof\s\d{1,3}'
-footer_pattern = r'check this is the latest version of the document before use.'
-match = re.search(header_pattern, header)
-if match: print("totototo")
+#header = "REP-0234010 v1.0 Status: Approved Approved Date: 07 Feb 2024 Page 4 of 105"
+#header_pattern = r'REP-\d{7}\sv\d{1}.\d{1}\sStatus: Approved Approved Date:\s\d{1,2}\s\w+\s\d{4}\sPage\s\d{1,3}\sof\s\d{1,3}'
+#footer_pattern = r'check this is the latest version of the document before use.'
+#match = re.search(header_pattern, header)
+#if match: print("totototo")
 
     
 
@@ -491,11 +492,11 @@ def save_chunks_to_json(chunks, json_filename):
 # COMMAND ----------
 
 #return {"sections":sections, "chunk_sections": chunk_sections,  "documents": docs, "reporting_period_startdate": reporting_period_startdate, "reporting_period_enddate": #reporting_period_enddate, "product_name": product_name, "site_name": site_name}
-sec_doc = Ingest_phase_2("Fasenra", "14Nov2022_13Nov2023", "fmc", "Sample Source document - FMC.pdf")
+#sec_doc = Ingest_phase_2("Fasenra", "14Nov2022_13Nov2023", "fmc", "Sample Source document - FMC.pdf")
 
 # COMMAND ----------
 
-sec_doc["chunk_sections"]
+#sec_doc["chunk_sections"]
 
 # COMMAND ----------
 
@@ -513,7 +514,7 @@ def Ingest_PQR(upload_folder):
               sections = sections + sec_doc["sections"]
               section_chunks = section_chunks  + sec_doc["chunk_sections"]
 
-              pinecone_insert_docs(sec_doc["documents"], INDEX_NAME)
+              #pinecone_insert_docs(sec_doc["documents"], INDEX_NAME)
            
     ispr_json_filename = "ispr" + "-" + product_name + "-" + reporting_period + ".json"
     ispr_chunk_json_filename = "ispr_chunk" + "-" + product_name + "-" +reporting_period + ".json"
@@ -528,13 +529,13 @@ Ingest_PQR(upload_folder)
 # COMMAND ----------
 
 # Display the results
-for section in section_chunks:
-    if section['section_name'] == 'summary and conclusion':
-       print(f"Section: {section['section_name']}")
-       print(f"File Name: {section['file_name']}")
-       print(f"Reporting Period: {section['reporting_period']}")
-       print(f"Product Name: {section['product_name']}")
-       print(f"Site Name: {section['site_name']}")
-       #print(f"Content: {section['text'][:500]}...")  # Print first 500 characters for preview
-       print(f"Content: {section['text']}...")  # Print first 500 characters for preview
-       print("\n--- End of Section ---\n")
+#for section in section_chunks:
+#    if section['section_name'] == 'summary and conclusion':
+#       print(f"Section: {section['section_name']}")
+#       print(f"File Name: {section['file_name']}")
+#       print(f"Reporting Period: {section['reporting_period']}")
+#       print(f"Product Name: {section['product_name']}")
+#       print(f"Site Name: {section['site_name']}")
+#       #print(f"Content: {section['text'][:500]}...")  # Print first 500 characters for preview
+#       print(f"Content: {section['text']}...")  # Print first 500 characters for preview
+#       print("\n--- End of Section ---\n")

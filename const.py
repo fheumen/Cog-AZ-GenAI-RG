@@ -6,7 +6,7 @@ OUTPUTS_PATH = "/dbfs/mnt/FileStore/outputs"  ### output directory, where all ou
 section_names = ["summary and conclusion", "Batches Reviewed", "Reprocessed",
                  "Product Reviews from", "Starting and Packaging Materials",
                  "Analytical Data", "Changes", "Stability data", "Deviations", "Quality Events", "Complaints (Product Quality)",
-                 "Recalls, Stock recoveries, Field Alerts", "Returned and salvaged goods",
+                 "Recalls, Stock recoveries, Field Alert", "Returned and salvaged goods",
                  "CONTRACTUAL AGREEMENTS / ARRANGEMENTS", "Qualification status", "Other"]
 
 section_pattern = [r"summary and conclusion", r"Batches Reviewed", r"Reprocessed",
@@ -27,4 +27,4 @@ date_pattern = r'(\d{1,2}\s\w+\s\d{4})\s[–-]\s(\d{1,2}\s\w+\s\d{4})|(\d{1,2}\s
 
 # Regular expression to match header and the footer, in order to avoid extracting them
 header_pattern = r'REP-\d{7}\sv\d{1}.\d{1}\sStatus: Approved Approved Date:\s\d{1,2}\s\w+\s\d{4}\sPage\s\d{1,3}\sof\s\d{1,3}'
-footer_pattern = r'check this is the latest version of the document before use.'
+footer_pattern = r'Check this is the latest version of the document before use.'
