@@ -22,6 +22,7 @@ streamlit-chat = "==0.1.1"
 ragas = "*"
 tiktoken = "*"
 lark = "*"
+boto3 = "*"
 
 [dev-packages]
 
