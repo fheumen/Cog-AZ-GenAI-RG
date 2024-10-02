@@ -175,7 +175,8 @@ def get_text(col1):
 def upload_files(col1):
     with col1:
          st.title("Upload PQR files")
-         uploaded_files = st.file_uploader(label="Upload PQR files", accept_multiple_files=True, key="upload_files")
+         uploaded_files = st.file_uploader(label="Upload PQR files", accept_multiple_files=True, type=["pdf", "docx"],
+                                           key="upload_files")
          Submit =  st.button(label='Upload', key="submit_upload")
 
 

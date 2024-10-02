@@ -17,6 +17,6 @@ for filename in os.listdir(absolut_path_dir):
    target_filename = "tmp/"+filename
 
     ## load data into S3
-   client.upload_file(absolut_path, bucket,target_filename)
+   client.upload_file(absolut_path, bucket, target_filename)
 
 

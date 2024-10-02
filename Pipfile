@@ -23,6 +23,8 @@ ragas = "*"
 tiktoken = "*"
 lark = "*"
 boto3 = "*"
+pymupdf = "*"
+pdfplumber = "*"
 
 [dev-packages]
 
