@@ -1,4 +1,5 @@
 INDEX_NAME = "azreportgenindex" ### Pinecone Index Name
+# aws_azreportgenindex_fab
 
 BUCKET_NAME = "s3-az-reportgen-bucket"
 INTPUTS_PATH = "inputs/"  ### intput directory, where all intputs  files are save

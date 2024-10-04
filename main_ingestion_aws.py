@@ -6,6 +6,13 @@ import pdfplumber
 #import fitz
 from utils_aws import *
 from const_aws import *
+from dotenv import load_dotenv
+load_dotenv()
+
+from langchain_community.vectorstores import OpenSearchVectorSearch
+
+opensearch_domain_endpoint = os.environ['OPENSEARCH_ENDPOINT']
+opensearch_index = os.environ['OPENSEARCH_INDEX']
 
 def Ingestion_Json(event, context):
     # TODO implement

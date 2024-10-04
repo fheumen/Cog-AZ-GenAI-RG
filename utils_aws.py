@@ -7,8 +7,40 @@ import pdfplumber
 import io
 import pandas as pd
 import json
+from langchain_community.vectorstores import OpenSearchVectorSearch
+from opensearchpy import RequestsHttpConnection, OpenSearch
+from langchain_community.embeddings import BedrockEmbeddings
+from langchain.docstore.document import Document
+from dotenv import load_dotenv
+from requests_aws4auth import AWS4Auth
+load_dotenv()
 
 s3 = boto3.client('s3')
+
+
+######### Initiate AWS Credentials
+service = "aoss"
+credentials = boto3.Session().get_credentials()
+region = boto3.Session().region_name
+awsauth = AWS4Auth(credentials.access_key, credentials.secret_key, region, service, session_token=credentials.token)
+
+
+##########OpenSearch
+opensearch_domain_endpoint = os.environ['OPENSEARCH_ENDPOINT']
+opensearch_index = os.environ['OPENSEARCH_INDEX']
+embedding = BedrockEmbeddings(model_id=os.environ['aws_embedding_model'])
+
+
+opensearch_vdb = OpenSearchVectorSearch(
+  embedding_function=embedding,
+  index_name=opensearch_index,
+  http_auth = awsauth,
+  use_ssl = True,
+  verify_certs = True,
+  http_compress = True, # enables gzip compression for request bodies
+  connection_class = RequestsHttpConnection,
+  opensearch_url=opensearch_domain_endpoint
+)
 
 def get_list_of_files(bucket_name, folder_prefix):
   response = s3.list_objects_v2(Bucket=bucket_name, Prefix=folder_prefix)['Contents']
@@ -203,10 +235,10 @@ def extract_text_tables_images_by_sections(pdf_path, section_names, reporting_pe
                 if matched_section:
                     # Save the previous section
                     if chunk_current_section["section_name"]:
-                        doc = {
-                            "content": chunk_current_section["text"],
-                            "metadata": chunk_current_section,
-                        }
+                        doc = Document(
+                             page_content=chunk_current_section["text"],
+                             metadata=chunk_current_section,
+                        )
                         docs.append(doc)
                         chunk_sections.append(chunk_current_section)
 
@@ -254,10 +286,10 @@ def extract_text_tables_images_by_sections(pdf_path, section_names, reporting_pe
                         chunk_current_section_tmp = chunk_current_section.copy()
                         chunk_current_section_tmp["text"] += line.strip() + "\n"
                         ################ create a doc object
-                        doc = {
-                            "content": chunk_current_section_tmp["text"],
-                            "metadata": chunk_current_section_tmp,
-                        }
+                        doc = Document(
+                            page_content=chunk_current_section_tmp["text"],
+                            metadata=chunk_current_section_tmp,
+                        )
                         docs.append(doc)
                         chunk_sections.append(chunk_current_section_tmp)
                         # sections.append(current_section_tmp)
@@ -325,10 +357,10 @@ def extract_text_tables_images_by_sections(pdf_path, section_names, reporting_pe
 
     # Append the last section
     if current_section["section_name"]:
-        doc = {
-            "content": chunk_current_section["text"],
-            "metadata": chunk_current_section,
-        }
+        doc = Document(
+            page_content= chunk_current_section["text"],
+            metadata= chunk_current_section,
+        )
         docs.append(doc)
         sections.append(current_section)
         chunk_sections.append(chunk_current_section)
@@ -368,7 +400,20 @@ def Ingest_phase_1(bucket_name, pqr_file_name):
     s3.copy({'Bucket': bucket_name, 'Key': tmp_pqr_pdf_path}, bucket_name, f"{input_folder_pqr_reporting_period_product_name}/{pqr_file_name}")
     s3.delete_object(Bucket=bucket_name, Key=tmp_pqr_pdf_path)
     return reporting_period, product_name, site_name
-    
+
+
+
+############
+from langchain_community.vectorstores import OpenSearchVectorSearch
+def opensearch_insert_docs(documents):
+
+    print(f"Going to insert {len(documents)} to Pinecone")
+    # Prepare embeddings and documents for insertion
+    opensearch_vdb.add_documents(
+        documents=documents,
+    )
+    print("****** Added to Pinecone vectorstore vector")
+    ################
 def Ingest_phase_2(product_name, reporting_period, site_name, pqr_file_name):
      filename_to_proceed = f"{input_folder}{product_name}/{reporting_period}/{pqr_file_name}"
      output_path_images_tables = f"{input_folder}{product_name}/{reporting_period}"
@@ -384,6 +429,7 @@ def Ingest_phase_2(product_name, reporting_period, site_name, pqr_file_name):
         #     if single_filename.endswith(".docx"):
         #        section_chunks = section_chunks + (ingest_docx(filename_to_proceed, section_names, reporting_period, product_name, single_filename, site_name))                   
         #pinecone_insert_docs(sec_doc["documents"], INDEX_NAME)
+        #opensearch_insert_docs(sec_doc["documents"])
 
 def save_chunks_to_json(chunks, json_filename):
     """Save the chunked sections to a JSON file."""
@@ -414,9 +460,11 @@ def Ingest_PQR(bucket_name, upload_folder):
            
               sections = sections + sec_doc["sections"]
               section_chunks = section_chunks  + sec_doc["chunk_sections"]
+              #print(sec_doc["documents"])
 
               #pinecone_insert_docs(sec_doc["documents"], INDEX_NAME)
-           
+              opensearch_insert_docs(sec_doc["documents"])
+
     ispr_json_filename = "ispr" + "-" + product_name + "-" + reporting_period + ".json"
     ispr_chunk_json_filename = "ispr_chunk" + "-" + product_name + "-" +reporting_period + ".json"
     
