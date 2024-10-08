@@ -130,10 +130,10 @@ def build_sidebar():
         """
         )
 
-        st.subheader("Pinecone")
+        st.subheader("Amazon OpenSearch Vector DB")
         st.write(
             """
-        [Pinecone](https://www.pinecone.io/) is the open-source embedding database. Pinecone makes it easy to build LLM apps by making knowledge, facts, and skills pluggable for LLMs.
+        [OpenSearch Service as a vector database, you can implement semantic search, Retrieval Augmented Generation (RAG) with LLMs, recommendation engines, and search rich media..
         """
         )
 

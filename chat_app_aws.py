@@ -208,6 +208,7 @@ class ReportGeneration:
             vectorstore=self.vectorstore,
             structured_query_translator=OpenSearchTranslator(),
             search_kwargs={"k": 10},
+            search_type="mmr"
         )
 
     def initialize_chat_model(self):
@@ -228,14 +229,10 @@ class ReportGeneration:
                 (
                     "system",
                     """
-                    Your goal is to write a summary to users based on their 
-                    query and the retrieved context. If your context is empty
-                    do not generated a summary, but instead
-                    tell the user you couldn't find any information that match their query.
-                    Your summary should be concise, original, and at least two to three sentences 
-                    long.
-
-                    YOU CANNOT GENERATED A SUMMARY IF YOUR IS EMPTY                    
+                    Your goal is to answer the following questions based on their 
+                    retrieved context. If your context is empty
+                    do not generated an answer, but instead
+                    tell the user you couldn't find any information that match their question..               
 
                     Question: {question} 
                     Context: {context} 
