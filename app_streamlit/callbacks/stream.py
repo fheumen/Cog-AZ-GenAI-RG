@@ -1,5 +1,6 @@
 from langchain.callbacks.base import BaseCallbackHandler
 
+
 class StreamingHandler(BaseCallbackHandler):
     def __init__(self, queue):
         self.queue = queue

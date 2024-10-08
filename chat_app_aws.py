@@ -3,7 +3,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 from langchain_core.output_parsers import StrOutputParser
 from langchain.chains.query_constructor.base import AttributeInfo
-from langchain.retrievers.self_query.pinecone import PineconeTranslator
+from langchain.retrievers.self_query.opensearch import OpenSearchTranslator
 from langchain.retrievers.self_query.base import SelfQueryRetriever
 from langchain_core.runnables import RunnableParallel, RunnablePassthrough
 from langchain_pinecone import PineconeVectorStore
@@ -17,6 +17,15 @@ from langchain.chains.query_constructor.base import (
 from typing import List, Dict, Any
 
 from app_streamlit.chains.retrieval import StreamingConversationalRetrievalChain
+from langchain_community.llms import Bedrock
+from langchain_community.embeddings import BedrockEmbeddings
+from langchain_community.vectorstores import OpenSearchVectorSearch
+from opensearchpy import RequestsHttpConnection, OpenSearch
+from requests_aws4auth import AWS4Auth
+import boto3
+
+
+s3 = boto3.client("s3")
 
 # Pinecone
 from pinecone import Pinecone
@@ -29,7 +38,7 @@ from app_streamlit.tracing.langfuse import *
 
 
 class ReportGeneration:
-    with open("./config.json") as f:
+    with open("./config_aws.json") as f:
         config = json.load(f)
 
     RETRIEVER_MODEL_NAME = config["RETRIEVER_MODEL_NAME"]
@@ -41,16 +50,14 @@ class ReportGeneration:
     chat_model = None
     prompt = None
 
-    def __init__(
-        self, openai_api_key, pinecone_api_key, pinecone_index_name, pinecone_env_region
-    ):
+    def __init__(self, embedding, opensearch_domain_endpoint, opensearch_index):
         load_dotenv()
         self.initialize_query_constructor()
         self.initialize_vector_store(
-            openai_api_key, pinecone_api_key, pinecone_index_name, pinecone_env_region
+            embedding, opensearch_domain_endpoint, opensearch_index
         )
-        self.initialize_retriever(openai_api_key)
-        self.initialize_chat_model(openai_api_key)
+        self.initialize_retriever()
+        self.initialize_chat_model()
 
     def initialize_query_constructor(self):
         document_content_description = "Health Care Reports, along with keywords"
@@ -70,39 +77,39 @@ class ReportGeneration:
 
         examples = [
             (
-                "How many batches were manufactured/rejected at the site fmc at 15K scale for the product Fasenra during the reporting period between 14Nov2022 and 13Nov2013?",
+                "How many batches were manufactured/rejected at the site fmc at 15K scale for the product Fasenra during the reporting period between '14Nov2022' and '13Nov2023'?",
                 {
                     "query": "Count of manufactured/rejected bacthes ",
-                    "filter": "and(eq('reporting_period', '14Nov2022_13Nov2013'), in('product_name', ['Fasenra']), eq('site_name', 'fmc'))",
+                    "filter": "and(eq('reporting_period', '14Nov2022_13Nov2023'), eq('product_name', 'Fasenra'), eq('site_name', 'fmc'))",
                 },
             ),
             (
                 # "Show me critically acclaimed dramas without Tom Hanks.",
-                "What where the batch numbers manufactured at the site fmc for the product Fasenra during the reporting period between 14Nov2022 and 13Nov2013?",
+                "What where the batch numbers manufactured at the site fmc for the product Fasenra during the reporting period between '14Nov2022' and '13Nov2023'?",
                 {
                     "query": "batch numbers manufactured",
-                    "filter": "and(eq('reporting_period', '14Nov2022_13Nov2013'), in('product_name', ['Fasenra']), eq('site_name', 'fmc'))",
+                    "filter": "and(eq('reporting_period', '14Nov2022_13Nov2023'), eq('product_name', 'Fasenra'), eq('site_name', 'fmc'))",
                 },
             ),
             (
-                "How many batches were fully release at the site fmc  for the product Fasenra during the reporting period between 14Nov2022 and 13Nov2013?",
+                "How many batches were fully release at the site fmc  for the product Fasenra during the reporting period between '14Nov2022' and '13Nov2023'?",
                 {
                     "query": "Count of batches fully release",
-                    "filter": "and(eq('reporting_period', '14Nov2022_13Nov2013'), in('product_name', ['Fasenra']), eq('site_name', 'fmc'))",
+                    "filter": "and(eq('reporting_period', '14Nov2022_13Nov2023'), eq('product_name', 'Fasenra'), eq('site_name', 'fmc'))",
                 },
             ),
             (
-                "How many batches were outside of the specifications for the product Fasenra during the reporting period between 14Nov2022 and 13Nov2013?",
+                "How many batches were outside of the specifications for the product Fasenra during the reporting period between '14Nov2022' and '13Nov2023'?",
                 {
                     "query": "Count of batches outside of the specifications",
-                    "filter": "and(eq('reporting_period', '14Nov2022_13Nov2013'), in('product_name', ['Fasenra']))",
+                    "filter": "and(eq('reporting_period', '14Nov2022_13Nov2023'), eq('product_name', 'Fasenra'))",
                 },
             ),
             (
-                "Summarize the section summary and conclusion for the product Fasenra during the reporting period between 14Nov2022 and 13Nov2013?",
+                "Summarize the section summary and conclusion for the product Fasenra during the reporting period between '14Nov2022' and '13Nov2023'?",
                 {
                     "query": "summarize the section summary and conclusion",
-                    "filter": "and(eq('reporting_period', '14Nov2022_13Nov2013'), in('product_name', ['Fasenra']), in('section_name', ['summary and conclusion']))",
+                    "filter": "and(eq('reporting_period', '14Nov2022_13Nov2023'), eq('product_name', 'Fasenra'), eq('section_name', 'summary and conclusion'))",
                 },
             ),
             # (
@@ -134,6 +141,7 @@ class ReportGeneration:
                 description="The Reporting Period",
                 type="string",
             ),
+
             AttributeInfo(
                 name="product_name", description="Name of the Product", type="string"
             ),
@@ -155,35 +163,40 @@ class ReportGeneration:
         )
 
     def initialize_vector_store(
-        self, open_ai_key, pinecone_api_key, pinecone_index_name, pinecone_env_region
+        self, embedding, opensearch_domain_endpoint, opensearch_index
     ):
         # pc = Pinecone(api_key=pinecone_api_key)
 
-        pc = Pinecone(
-            api_key=pinecone_api_key,
-            environment=pinecone_env_region,
+        service = "aoss"
+        credentials = boto3.Session().get_credentials()
+        region = boto3.Session().region_name
+        awsauth = AWS4Auth(
+            credentials.access_key,
+            credentials.secret_key,
+            region,
+            service,
+            session_token=credentials.token,
         )
 
-        # Target index and check status
-        pc_index = pc.Index(pinecone_index_name)
-
-        embeddings = OpenAIEmbeddings(
-            model="text-embedding-3-large", api_key=open_ai_key
+        self.vectorstore = OpenSearchVectorSearch(
+            embedding_function=embedding,
+            index_name=opensearch_index,
+            http_auth=awsauth,
+            use_ssl=True,
+            verify_certs=True,
+            http_compress=True,  # enables gzip compression for request bodies
+            connection_class=RequestsHttpConnection,
+            opensearch_url=opensearch_domain_endpoint,
+            text_field="text",
+            metadata_field="metadata",
         )
 
-        # embeddings = OpenAIEmbeddings(openai_api_key=open_ai_key)
-
-        # self.vectorstore = Pinecone.from_existing_index(
-        #     embedding=embeddings, index_name=pinecone_index_name
-        # )
-        self.vectorstore = PineconeVectorStore(pc_index, embeddings)
-
-    def initialize_retriever(self, open_ai_key):
-        query_model = ChatOpenAI(
-            model=self.RETRIEVER_MODEL_NAME,
-            temperature=0,
+    def initialize_retriever(self):
+        query_model = Bedrock(
+            model_id=self.RETRIEVER_MODEL_NAME,
+            # temperature=0,
             streaming=True,
-            api_key=open_ai_key,
+            # api_key=open_ai_key
         )
 
         output_parser = StructuredQueryOutputParser.from_components()
@@ -193,21 +206,21 @@ class ReportGeneration:
             # llm=query_model,
             query_constructor=query_constructor,
             vectorstore=self.vectorstore,
-            structured_query_translator=PineconeTranslator(),
+            structured_query_translator=OpenSearchTranslator(),
             search_kwargs={"k": 10},
         )
 
-    def initialize_chat_model(self, open_ai_key):
+    def initialize_chat_model(self):
         def format_docs(docs):
             return "\n\n".join(
                 f"{doc.page_content}\n\nMetadata: {doc.metadata}" for doc in docs
             )
 
-        self.chat_model = ChatOpenAI(
-            model=self.SUMMARY_MODEL_NAME,
-            temperature=0,
+        self.chat_model = Bedrock(
+            model_id=self.SUMMARY_MODEL_NAME,
+            # temperature=0,
             streaming=True,
-            api_key=open_ai_key,
+            # api_key=open_ai_key
         )
 
         self.prompt = ChatPromptTemplate.from_messages(

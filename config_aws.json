@@ -1,0 +1,7 @@
+{
+  "RETRIEVER_MODEL_NAME": "amazon.titan-text-express-v1",
+  "SUMMARY_MODEL_NAME": "amazon.titan-text-express-v1",
+  "SUMMARY_MODEL_NAME_GPT4": "amazon.titan-text-express-v1",
+
+  "years": ["2023", "2024"]
+}
