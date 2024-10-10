@@ -559,7 +559,7 @@ def ispr_generation(bucket_name):
                         & (df["site_name"] == site_name.lower())
                         & (df["product_name"] == product_name)
                         & (df["reporting_period"] == reporting_period),
-                        ["page_num", "section_name", "text"],
+                        ["page_num", "images", "tables", "section_name", "text"],
                     ]
                     #print(subset)
                     #print(subset.empty)
@@ -569,16 +569,16 @@ def ispr_generation(bucket_name):
                         max_row = subset.loc[subset["page_num"].idxmax()]
                         heading_name = section_name + "_" + site_name
                         document.add_heading(heading_name, i)
-
+                        print(max_row)
                         document.add_paragraph(max_row["text"])
                         # Add images
 
 
-                        for image_path in df["images"]:
+                        for image_path in max_row["images"]:
                             print(image_path)
                             if len(image_path) > 0:
                                 img_stream = io.BytesIO()
-                                s3.download_fileobj(bucket_name, image_path[0], img_stream)
+                                s3.download_fileobj(bucket_name, image_path, img_stream)
                                 img_stream.seek(0)
                                 #print(image_path)
                                 document.add_picture(
@@ -586,12 +586,12 @@ def ispr_generation(bucket_name):
                                 )  # Add image with a fixed width
 
                         # Add tables
-                        for table_path in df["tables"]:
+                        for table_path in max_row["tables"]:
                             print(table_path)
                             if len(table_path) > 0:
                                 #csv_data = read_csv(table_path)
                                 csv_stream = io.BytesIO()
-                                s3.download_fileobj(bucket_name, table_path[0], csv_stream)
+                                s3.download_fileobj(bucket_name, table_path, csv_stream)
                                 csv_stream.seek(0)
 
                                 # Read the CSV content
