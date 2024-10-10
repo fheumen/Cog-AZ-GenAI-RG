@@ -28,6 +28,7 @@ pdfplumber = "*"
 opensearch-py = "*"
 langchain = "==0.2.1"
 requests-aws4auth = "*"
+python-docx = "*"
 
 [dev-packages]
 

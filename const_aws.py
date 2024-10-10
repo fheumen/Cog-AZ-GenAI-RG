@@ -53,21 +53,21 @@ section_pattern = [
 
 site_names = ["fmc", "sbc", "speke"]
 
-# product_names = ["Fasenra"]
-product_names = [
-    "Lumoxity",
-    "Enhertu",
-    "Vaxzevria",
-    "Beyfortus",
-    "IMJUDO",
-    "IMFINZI",
-    "Synagis",
-    "Saphnelo",
-    "Fasenra",
-    "Tezspire",
-]
+product_names = ["Fasenra"]
+# product_names = [
+#     "Lumoxity",
+#     "Enhertu",
+#     "Vaxzevria",
+#     "Beyfortus",
+#     "IMJUDO",
+#     "IMFINZI",
+#     "Synagis",
+#     "Saphnelo",
+#     "Fasenra",
+#     "Tezspire",
+# ]
 
-reporting_periods = ["14Nov2022_13Nov2013"]
+reporting_periods = ["14Nov2022_13Nov2023"]
 
 # Regular expression to match the date range (e.g., "14 Nov 2022 – 13 Nov 2023" or "14 Nov 2022 to 13 Nov 2023")
 date_pattern = r"(\d{1,2}\s\w+\s\d{4})\s[–-]\s(\d{1,2}\s\w+\s\d{4})|(\d{1,2}\s\w+\s\d{4})\sto\s(\d{1,2}\s\w+\s\d{4})|(\w+\s\d{1,2},\s\d{4})\sthrough\s(\w+\s\d{1,2},\s\d{4})"
