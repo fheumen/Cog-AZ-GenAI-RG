@@ -1,17 +1,24 @@
-INDEX_NAME = "azreportgenindex"  ### Pinecone Index Name
+from uuid import uuid4
+INDEX_NAME = "aws_azreportgenindex_fab"  ### Pinecone Index Name
 # aws_azreportgenindex_fab
+#model_max_tokens = 8192
+model_max_tokens = 7500
 
 BUCKET_NAME = "s3-az-reportgen-bucket"
 INTPUTS_PATH = "inputs/"  ### intput directory, where all intputs  files are save
 UPLOAD_TMP_PATH = "tmp/"  ### intput directory, where all files uploaded by the user are temporarily saved
 OUTPUTS_PATH = "outputs/"  ### output directory, where all output files are save
-
+MAPPING_FILE_PATH = "inputs/Mapping.xlsx"
+SHEET_NAME_MAPPING = "Mapping"
+model_name = "gpt-3.5-turbo-16k-0613"
 bucket_name = f"{BUCKET_NAME}"
 input_folder = (
     f"{INTPUTS_PATH}"  ### intput directory, where all intputs  files are save
 )
 output_folder = f"{OUTPUTS_PATH}"  ### output directory, where all output files are save
 upload_folder = f"{UPLOAD_TMP_PATH}"
+
+session_id=str(uuid4())
 
 section_names = [
     "summary and conclusion",
@@ -31,6 +38,10 @@ section_names = [
     "Qualification status",
     "Other",
 ]
+
+
+
+
 
 section_pattern = [
     r"summary and conclusion",

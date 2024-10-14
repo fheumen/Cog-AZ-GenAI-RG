@@ -1,4 +1,5 @@
 # Langchain
+from langchain.memory import ConversationBufferWindowMemory
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 from langchain_core.output_parsers import StrOutputParser
@@ -23,6 +24,7 @@ from langchain_community.vectorstores import OpenSearchVectorSearch
 from opensearchpy import RequestsHttpConnection, OpenSearch
 from requests_aws4auth import AWS4Auth
 import boto3
+from langchain_community.chat_message_histories import DynamoDBChatMessageHistory
 
 
 s3 = boto3.client("s3")
@@ -77,39 +79,39 @@ class ReportGeneration:
 
         examples = [
             (
-                "How many batches were manufactured/rejected at the site fmc at 15K scale for the product Fasenra during the reporting period between '14Nov2022' and '13Nov2023'?",
+                "How many batches were manufactured/rejected at the site fmc at 15K scale for the product Fasenra during the reporting period between 14Nov2022 and 13Nov2023?",
                 {
                     "query": "Count of manufactured/rejected bacthes ",
-                    "filter": "and(eq('reporting_period', '14Nov2022_13Nov2023'), eq('product_name', 'Fasenra'), eq('site_name', 'fmc'))",
+                    "filter": "and(eq('reporting_period_startdate', '14Nov2022'), eq('reporting_period_enddate', '13Nov2023'), eq('product_name', 'Fasenra'), eq('site_name', 'fmc'))",
                 },
             ),
             (
                 # "Show me critically acclaimed dramas without Tom Hanks.",
-                "What where the batch numbers manufactured at the site fmc for the product Fasenra during the reporting period between '14Nov2022' and '13Nov2023'?",
+                "What where the batch numbers manufactured at the site fmc for the product Fasenra during the reporting period between 14Nov2022 and 13Nov2023?",
                 {
                     "query": "batch numbers manufactured",
-                    "filter": "and(eq('reporting_period', '14Nov2022_13Nov2023'), eq('product_name', 'Fasenra'), eq('site_name', 'fmc'))",
+                    "filter": "and(eq('reporting_period_startdate', '14Nov2022'), eq('reporting_period_enddate', '13Nov2023'), eq('product_name', 'Fasenra'), eq('site_name', 'fmc'))",
                 },
             ),
             (
-                "How many batches were fully release at the site fmc  for the product Fasenra during the reporting period between '14Nov2022' and '13Nov2023'?",
+                "How many batches were fully release at the site fmc  for the product Fasenra during the reporting period between 14Nov2022 and 13Nov2023?",
                 {
                     "query": "Count of batches fully release",
-                    "filter": "and(eq('reporting_period', '14Nov2022_13Nov2023'), eq('product_name', 'Fasenra'), eq('site_name', 'fmc'))",
+                    "filter": "and(eq('reporting_period_startdate', '14Nov2022'), eq('reporting_period_enddate', '13Nov2023'), eq('product_name', 'Fasenra'), eq('site_name', 'fmc'))",
                 },
             ),
             (
-                "How many batches were outside of the specifications for the product Fasenra during the reporting period between '14Nov2022' and '13Nov2023'?",
+                "How many batches were outside of the specifications for the product Fasenra during the reporting period between 14Nov2022 and 13Nov2023?",
                 {
                     "query": "Count of batches outside of the specifications",
-                    "filter": "and(eq('reporting_period', '14Nov2022_13Nov2023'), eq('product_name', 'Fasenra'))",
+                    "filter": "and(eq('reporting_period_startdate', '14Nov2022'), eq('reporting_period_enddate', '13Nov2023'), eq('product_name', 'Fasenra'))",
                 },
             ),
             (
                 "Summarize the section summary and conclusion for the product Fasenra during the reporting period between '14Nov2022' and '13Nov2023'?",
                 {
                     "query": "summarize the section summary and conclusion",
-                    "filter": "and(eq('reporting_period', '14Nov2022_13Nov2023'), eq('product_name', 'Fasenra'), eq('section_name', 'summary and conclusion'))",
+                    "filter": "and(eq('reporting_period_startdate', '14Nov2022'), eq('reporting_period_enddate', '13Nov2023'), eq('product_name', 'Fasenra'), eq('section_name', 'summary and conclusion'))",
                 },
             ),
             # (
@@ -137,8 +139,13 @@ class ReportGeneration:
 
         metadata_field_info = [
             AttributeInfo(
-                name="reporting_period",
-                description="The Reporting Period",
+                name="reporting_period_startdate",
+                description="The Reporting Period Start date",
+                type="string",
+            ),
+            AttributeInfo(
+                name="reporting_period_enddate",
+                description="The Reporting Period End date",
                 type="string",
             ),
 
@@ -253,17 +260,29 @@ class ReportGeneration:
             {"context": self.retriever, "question": RunnablePassthrough()}
         ).assign(answer=rag_chain_from_docs)
 
-    def ask(self, query: str, chat_history: List[Dict[str, Any]] = []) -> Any:
+    def ask(self, query: str,  chat_history: List[Dict[str, Any]] = []) -> Any:
         try:
             # for chunk in self.rag_chain_with_source.stream(query):
             #     for key in chunk:
             #         if key == 'answer':
             #             yield chunk[key]
             # rag_chain_with_source.invoke(query, callbacks=[trace.getNewHandler()])
+
+            #message_history = DynamoDBChatMessageHistory(
+                #table_name="ReportGen", session_id=session_id
+            #)
+            #memory_chain = ConversationBufferWindowMemory(
+                #memory_key="chat_history",
+                #chat_memory=message_history,
+                #return_messages=True,
+                #k=3,
+            #)
+
             qa = StreamingConversationalRetrievalChain.from_llm(
                 llm=self.chat_model,
                 retriever=self.retriever,
                 return_source_documents=True,
+                #memory=memory_chain,
                 combine_docs_chain_kwargs={"prompt": self.prompt},
                 # callbacks=[langfuse_handler_trace]
                 callbacks=[trace.getNewHandler()],

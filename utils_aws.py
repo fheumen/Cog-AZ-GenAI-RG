@@ -6,8 +6,10 @@ from datetime import datetime
 from const_aws import *
 import pdfplumber
 import io
-#from docx import Document
+from docx import Document as Document_docx
+from docx.shared import Inches
 import pandas as pd
+import tiktoken
 import json
 from langchain_community.vectorstores import OpenSearchVectorSearch
 from opensearchpy import RequestsHttpConnection, OpenSearch
@@ -15,6 +17,10 @@ from langchain_community.embeddings import BedrockEmbeddings
 from langchain.docstore.document import Document
 from dotenv import load_dotenv
 from requests_aws4auth import AWS4Auth
+from langchain_openai import ChatOpenAI
+from langchain.chains.summarize import load_summarize_chain
+from langchain.prompts import PromptTemplate
+from chat_app_aws import ReportGeneration
 
 load_dotenv()
 
@@ -39,6 +45,13 @@ opensearch_domain_endpoint = os.environ["OPENSEARCH_ENDPOINT"]
 opensearch_index = os.environ["OPENSEARCH_INDEX"]
 embedding = BedrockEmbeddings(model_id=os.environ["aws_embedding_model"])
 
+openai_api_key = os.environ.get("OPENAI_API_KEY")
+
+load_dotenv()
+
+chat = ReportGeneration(embedding, opensearch_domain_endpoint, opensearch_index)
+#llm = ChatOpenAI(model_name=model_name, temperature=0, openai_api_key=openai_api_key)
+llm = chat.chat_model
 
 opensearch_vdb = OpenSearchVectorSearch(
     embedding_function=embedding,
@@ -52,6 +65,11 @@ opensearch_vdb = OpenSearchVectorSearch(
 )
 
 
+def num_tokens_from_string(string: str, encoding_name: str) -> int:
+    #encoding = tiktoken.encoding_for_model(encoding_name)
+    encoding = tiktoken.get_encoding(encoding_name)
+    num_tokens = len(encoding.encode(string))
+    return num_tokens
 def get_list_of_files(bucket_name, folder_prefix):
     response = s3.list_objects_v2(Bucket=bucket_name, Prefix=folder_prefix)["Contents"]
     return response
@@ -63,6 +81,49 @@ def check_create_dir(bucket_name, path):
     if "Contents" not in response:
         s3.put_object(Bucket=bucket_name, Key=(path + "/"))
 
+def get_mapping_list(bucket_name, excel_file_path = f"{MAPPING_FILE_PATH}", az_mapping_sheet_name=f"{SHEET_NAME_MAPPING }"):
+    #excel_file_path = f"{MAPPING_FILE_PATH}"
+    #az_mapping_sheet_name = "Mapping"
+
+    # Get the Excel file from S3
+    response = s3.get_object(Bucket=bucket_name, Key=excel_file_path)
+    excel_data = response['Body'].read()
+    df_mapping = pd.read_excel(io.BytesIO(excel_data), sheet_name=az_mapping_sheet_name)
+
+    section_names_ispr = df_mapping["ISPR Structur Section names"].tolist()
+    section_names_keysearch = [x.lower() for x in df_mapping["Section names key search"].tolist()]
+    ispr_summary_flag = df_mapping["Integration type in ISPR Flag"].tolist()
+    ispr_map_prompt_ls = df_mapping["Map Prompt Template"].tolist()
+    ispr_combine_prompt_ls = df_mapping["Combine Prompt Template"].tolist()
+
+    return {
+        "section_names_ispr": section_names_ispr,
+        "section_names_keysearch": section_names_keysearch,
+        "ispr_summary_flag": ispr_summary_flag,
+        "ispr_map_prompt_ls": ispr_map_prompt_ls,
+        "ispr_combine_prompt_ls": ispr_combine_prompt_ls
+
+    }
+
+# mapping_dic = get_mapping_list(bucket_name, excel_file_path=f"{MAPPING_FILE_PATH}",
+#                          az_mapping_sheet_name=f"{SHEET_NAME_MAPPING}")
+#
+# print(mapping_dic["section_names_keysearch"])
+# print(mapping_dic["section_names_ispr"])
+# print(mapping_dic["ispr_summary_flag"])
+# print(mapping_dic["ispr_map_prompt_ls"])
+# print(mapping_dic["ispr_combine_prompt_ls"])
+
+
+def get_abs_summarize(docs,  ispr_map_prompt, ispr_combine_prompt):
+    ispr_map_prompt_tmp = PromptTemplate(template=ispr_map_prompt, input_variables=["text"])
+    ispr_combine_prompt_prompt_tmp = PromptTemplate(template=ispr_combine_prompt, input_variables=["text"])
+    chain = load_summarize_chain(llm, chain_type="map_reduce", map_prompt=ispr_map_prompt_tmp, combine_prompt=ispr_combine_prompt_prompt_tmp )
+    #try:
+    summary = chain.run(docs)
+    #except:
+    #docs = docs[:-1]
+    return summary
 
 ######################
 def extract_reporting_period_product_name_site_name(
@@ -530,7 +591,7 @@ def Ingest_PQR(bucket_name, upload_folder):
     save_chunks_to_json(sections, ispr_json_filename)
     save_chunks_to_json(section_chunks, ispr_chunk_json_filename)
 
-def ispr_generation(bucket_name):
+def ispr_generation_(bucket_name):
 
     from docx import Document
     from docx.shared import Inches
@@ -551,6 +612,7 @@ def ispr_generation(bucket_name):
                 i = 1
                 document.add_heading(section_name, i)
                 i = i + 1
+                #if (summary_flag(section_name)
                 for site_name in site_names:
 
                     # Subsetting specific rows and columns by labels
@@ -619,4 +681,117 @@ def ispr_generation(bucket_name):
             doc_stream.seek(0)
             s3.upload_fileobj(doc_stream, bucket_name, target_filename)
 
-ispr_generation(bucket_name)
+#ispr_generation(bucket_name)
+
+def ispr_generation(bucket_name):
+
+    mapping_dic = get_mapping_list(bucket_name, excel_file_path=f"{MAPPING_FILE_PATH}",
+                         az_mapping_sheet_name=f"{SHEET_NAME_MAPPING}")
+
+    section_names_keysearch = mapping_dic["section_names_keysearch"]
+    section_names_ispr = mapping_dic["section_names_ispr"]
+    ispr_summary_flag = mapping_dic["ispr_summary_flag"]
+    ispr_map_prompt_templates = mapping_dic["ispr_map_prompt_ls"]
+    ispr_combine_prompt_templates = mapping_dic["ispr_combine_prompt_ls"]
+
+
+    for product_name in product_names:
+
+        for reporting_period in reporting_periods:
+
+            ispr_json_filename = "ispr" + "-" + product_name + "-" + reporting_period + ".json"
+            output_path_json = f"{output_folder}{ispr_json_filename}"
+            json_obj = s3.get_object(Bucket=bucket_name, Key=output_path_json)
+            json_data = json_obj['Body'].read().decode('utf-8')  # Read and decode the body
+
+            df = pd.DataFrame(json.loads(json_data))
+            document = Document_docx()
+
+            for section_index, section_name in enumerate(section_names_keysearch):
+                i = 1
+                document.add_heading(section_names_ispr[section_index], i)
+                i = i + 1
+
+                #### Collecting the text, images and tables present in a specific section
+                docs = []
+                images_section_sites = []
+                tables_section_sites = []
+
+                for site_name in site_names:
+
+                    # Subsetting specific rows and columns by labels
+                    subset = df.loc[
+                        (df["section_name"] == section_name.lower())
+                        & (df["site_name"] == site_name.lower())
+                        & (df["product_name"] == product_name)
+                        & (df["reporting_period"] == reporting_period),
+                        ["page_num", "images", "tables", "section_name", "text"],
+                    ]
+
+                    if not subset.empty:
+                        max_row = subset.loc[subset["page_num"].idxmax()]
+                        if ispr_summary_flag[section_index] == 1:
+                            text = max_row["text"]
+                            for i in range(0, len(text), model_max_tokens):
+                                chunk = text[i:i + model_max_tokens]
+                                doc = Document(
+                                     page_content=chunk,
+                            # metadata=result["matches"][j]["metadata"],
+                                )
+                                docs.append(doc)
+                            images_section_sites.append(max_row["images"])
+                            tables_section_sites.append(max_row["tables"])
+
+
+                        else:
+                            heading_name = section_name + "_" + site_name
+                            document.add_heading(heading_name, i)
+                            document.add_paragraph(max_row["text"])
+                        # Add images
+                            for image_path in max_row["images"]:
+                            #print(image_path)
+                               if len(image_path) > 0:
+                                  img_stream = io.BytesIO()
+                                  s3.download_fileobj(bucket_name, image_path, img_stream)
+                                  img_stream.seek(0)
+
+                                  document.add_picture(
+                                    img_stream, width=Inches(4)
+                                )  # Add image with a fixed width
+
+                        # Add tables
+                            for table_path in max_row["tables"]:
+                               if len(table_path) > 0:
+
+                                   csv_stream = io.BytesIO()
+                                   s3.download_fileobj(bucket_name, table_path, csv_stream)
+                                   csv_stream.seek(0)
+
+                                  # Read the CSV content
+                                   csv_data = list(csv.reader(io.StringIO(csv_stream.read().decode('utf-8'))))
+
+                                  # Create a new table in Word
+                                   rows = len(csv_data)
+                                   cols = len(csv_data[0])
+                                   word_table = document.add_table(rows=rows, cols=cols)
+
+                                  # Populate the Word table
+                                   for row_index, row in enumerate(csv_data):
+                                       for col_index, cell in enumerate(row):
+                                           word_table.cell(row_index, col_index).text = str(cell)
+
+                    else:
+                        continue
+                if ispr_summary_flag[section_index] == 1:
+                    summary_text = get_abs_summarize(docs, ispr_map_prompt_templates[section_index], ispr_combine_prompt_templates[section_index])
+                    document.add_paragraph(summary_text)
+
+            ispr_filename = "ispr" + "_" + product_name  + "_" + reporting_period + ".docx"
+            target_filename = f"{output_folder}{ispr_filename}"
+
+            # Save the document to a BytesIO object (in-memory file)
+            doc_stream = io.BytesIO()
+            document.save(doc_stream)
+            doc_stream.seek(0)
+            s3.upload_fileobj(doc_stream, bucket_name, target_filename)
+

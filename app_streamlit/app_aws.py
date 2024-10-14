@@ -1,9 +1,16 @@
 from typing import Set, List, Dict, Any
 import os
 
+from utils_aws import *
+from const_aws import *
+
 # from backend.core import *
 import streamlit as st
 from streamlit_chat import message
+
+
+
+
 
 # from streamlit_demo.tracing.langfuse import langfuse
 
@@ -14,6 +21,9 @@ from langchain.chat_models import ChatOpenAI
 
 # from langchain.chains import RetrievalQA
 from app_streamlit.chains.retrieval import StreamingConversationalRetrievalChain
+from langchain_community.chat_message_histories import DynamoDBChatMessageHistory
+
+
 from langchain.vectorstores import Pinecone
 from langchain.memory import ConversationBufferMemory
 
@@ -59,6 +69,9 @@ opensearch_domain_endpoint = os.environ["OPENSEARCH_ENDPOINT"]
 opensearch_index = os.environ["OPENSEARCH_INDEX"]
 embedding = BedrockEmbeddings(model_id=os.environ["aws_embedding_model"])
 
+# DynamoDB Chat Message History
+#session_id=str(uuid4())
+history = DynamoDBChatMessageHistory(table_name="ReportGen", session_id=session_id)
 
 def generate_response(input_text, chat_history: List[Dict[str, Any]] = []) -> Any:
 
@@ -67,6 +80,7 @@ def generate_response(input_text, chat_history: List[Dict[str, Any]] = []) -> An
     #print(opensearch_index)
     #print(opensearch_domain_endpoint)
     return chat.ask({"question": input_text, "chat_history": chat_history})
+    #return chat.ask(input_text, session_id, chat_history)
 
 
 def run_llm(query: str, chat_history: List[Dict[str, Any]] = []) -> Any:
@@ -190,11 +204,11 @@ def build_form(col1, col2):
             with st.expander("Sample questions"):
                 st.text(
                     """
-                How many batches were manufactured/rejected at the site fmc at 15K scale for the product Fasenra during the reporting period between '14Nov2022' and '13Nov2023'?
-                What where the batch numbers manufactured at the site fmc for the product Fasenra during the reporting period between '14Nov2022' and '13Nov2023'?
-                How many batches were fully release at the site fmc  for the product Fasenra during the reporting period between '14Nov2022' and '13Nov2023'?
-                How many batches were outside of the specifications for the product Fasenra during the reporting period between '14Nov2022' and '13Nov2023'?
-                Summarize the section summary  for the product Fasenra during the reporting period between '14Nov2022' and '13Nov2023'?
+                How many batches were manufactured/rejected at the site fmc at 15K scale for the product Fasenra during the reporting period between 14Nov2022 and 13Nov2023?
+                What where the batch numbers manufactured at the site fmc for the product Fasenra during the reporting period between 14Nov2022 and 13Nov2023?
+                How many batches were fully release at the site fmc  for the product Fasenra during the reporting period between 14Nov2022 and 13Nov2023?
+                How many batches were outside of the specifications for the product Fasenra during the reporting period between 14Nov2022' and 13Nov2023?
+                Summarize the section summary  for the product Fasenra during the reporting period between 14Nov2022 and 13Nov2023?
                 """
                 )
     with col2:
@@ -224,6 +238,11 @@ def upload_files(col1):
         )
         Submit = st.button(label="Upload", key="submit_upload")
 
+def ispr_generation(col1):
+    with col1:
+        st.title("ISPR Generation")
+        st.button(label="ISPR GEN", key="submit_ispr")
+
 
 def clear_text():
     st.session_state["query"] = st.session_state["query_text"]
@@ -244,7 +263,6 @@ def create_sources_string(source_urls: Set[str]) -> str:
     for i, source in enumerate(sources_list):
         sources_string += f"{i+1}. {source}\n"
     return sources_string
-
 
 # st.header("AZ_UC3 Chat Bot")
 st.set_page_config(page_title="Report Generation Assistant")
@@ -284,6 +302,9 @@ build_sidebar()
 # get the pqr files uploaded
 upload_files(col1)
 
+#ispr generation button
+ispr_generation(col1)
+
 # build the main app ui
 build_form(col1, col2)
 
@@ -294,6 +315,7 @@ get_text(col1)
 user_input = st.session_state["query"]
 upload_files = st.session_state["upload_files"]
 submit_upload = st.session_state["submit_upload"]
+submit_ispr = st.session_state["submit_ispr"]
 # print(user_input)
 
 
@@ -304,7 +326,7 @@ if user_input:
             generated_response = generate_response(
                 input_text=user_input, chat_history=st.session_state["chat_history"]
             )
-            print(generated_response)
+            #print(generated_response)
 
             sources = set(
                 [
@@ -322,6 +344,9 @@ if user_input:
                 # f"{generated_response['result']} \n\n {create_sources_string(sources)}"
                 f"{generated_response['answer']} \n\n {create_sources_string(sources)}"
             )
+
+            history.add_user_message(user_input)
+            history.add_ai_message(formatted_response)
 
             st.session_state["user_prompt_history"].append(user_input)
             st.session_state["chat_answer_history"].append(formatted_response)
@@ -360,3 +385,8 @@ if upload_files:
                 bytes_data = file.getvalue()
                 target_filename = "tmp/" + file.name
                 client.upload_fileobj(file, bucket, target_filename)
+
+if submit_ispr:
+    with st.spinner("ISPR Generation..."):
+        ispr_generation(bucket_name)
+
