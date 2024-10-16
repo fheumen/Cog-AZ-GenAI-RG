@@ -525,7 +525,7 @@ def opensearch_document_exists(
 ):
     # Perform the metadata search
     response = opensearch_client.search(
-        index=opensearch_index ,
+        index=opensearch_index,
         body={
             "query": {
                 "bool": {
