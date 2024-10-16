@@ -27,7 +27,7 @@ load_dotenv()
 s3 = boto3.client("s3")
 
 
-######### Initiate AWS Credentials
+0######### Initiate AWS Credentials
 service = "aoss"
 credentials = boto3.Session().get_credentials()
 region = boto3.Session().region_name
@@ -64,6 +64,15 @@ opensearch_vdb = OpenSearchVectorSearch(
     opensearch_url=opensearch_domain_endpoint,
 )
 
+# Connect to OpenSearch
+opensearch_client = OpenSearch(
+    hosts=opensearch_domain_endpoint,
+    http_compress=True,
+    use_ssl=True,
+    verify_certs=True,
+    connection_class=RequestsHttpConnection,
+    http_auth=awsauth # Replace with your credentials
+)
 #### Control the size of token
 def num_tokens_from_string(string: str, encoding_name: str) -> int:
     #encoding = tiktoken.encoding_for_model(encoding_name)
@@ -510,6 +519,33 @@ def Ingest_phase_1(bucket_name, pqr_file_name):
 ############
 from langchain_community.vectorstores import OpenSearchVectorSearch
 
+#### Check if an entry is already available in Pinececone.
+def opensearch_document_exists(
+     product_name, reporting_period, site_name
+):
+    # Perform the metadata search
+    response = opensearch_client.search(
+        index=opensearch_index ,
+        body={
+            "query": {
+                "bool": {
+                    "must": [
+                        {"term": {"metadata.product_name.keyword": product_name}},
+                        {"term": {"metadata.reporting_period.keyword": reporting_period}},
+                        {"term": {"metadata.site_name.keyword": site_name}}
+                    ]
+                }
+            }
+        }
+    )
+
+    # Check if any results were returned
+    if response['hits']['total']['value'] > 0:
+        print("Metadata already exists:", response['hits']['hits'])
+        return 1
+    else:
+        print("Metadata does not exist.")
+        return 0
 
 def opensearch_insert_docs(documents):
 
@@ -588,7 +624,10 @@ def Ingest_PQR(bucket_name, upload_folder):
                 # print(sec_doc["documents"])
 
                 # pinecone_insert_docs(sec_doc["documents"], INDEX_NAME)
-                opensearch_insert_docs(sec_doc["documents"])
+                if opensearch_document_exists(product_name, reporting_period, site_name) == 0:
+                    opensearch_insert_docs(sec_doc["documents"])
+                else:
+                    print("Metadata already exists:")
 
     ispr_json_filename = "ispr" + "-" + product_name + "-" + reporting_period + ".json"
     ispr_chunk_json_filename = (
