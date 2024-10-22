@@ -79,39 +79,39 @@ class ReportGeneration:
 
         examples = [
             (
-                "How many batches were manufactured/rejected at the site fmc at 15K scale for the product Fasenra during the reporting period between 14Nov2022 and 13Nov2023?",
+                "How many batches were manufactured/rejected at fmc at 15K scale? Given that the product is Fasenra and the reporting period is between 14Nov2022_13Nov2023?",
                 {
                     "query": "Count of manufactured/rejected bacthes ",
-                    "filter": "and(eq('reporting_period_startdate', '14Nov2022'), eq('reporting_period_enddate', '13Nov2023'), eq('product_name', 'Fasenra'), eq('site_name', 'fmc'))",
+                    "filter": "and(eq('reporting_period', '14Nov2022_13Nov2023'), eq('product_name', 'Fasenra'), eq('site_name', 'fmc'))",
                 },
             ),
             (
                 # "Show me critically acclaimed dramas without Tom Hanks.",
-                "What where the batch numbers manufactured at the site fmc for the product Fasenra during the reporting period between 14Nov2022 and 13Nov2023?",
+                "What where the batch numbers manufactured at the site fmc? Given that the product is Fasenra and the reporting period  14Nov2022_13Nov2023?",
                 {
                     "query": "batch numbers manufactured",
-                    "filter": "and(eq('reporting_period_startdate', '14Nov2022'), eq('reporting_period_enddate', '13Nov2023'), eq('product_name', 'Fasenra'), eq('site_name', 'fmc'))",
+                    "filter": "and(eq('reporting_period', '14Nov2022_13Nov2023'), eq('product_name', 'Fasenra'), eq('site_name', 'fmc'))",
                 },
             ),
             (
-                "How many batches were fully release at the site fmc  for the product Fasenra during the reporting period between 14Nov2022 and 13Nov2023?",
+                "How many batches were fully release at the site fmc? Given that the product is Fasenra and the reporting period  14Nov2022_13Nov2023?",
                 {
                     "query": "Count of batches fully release",
-                    "filter": "and(eq('reporting_period_startdate', '14Nov2022'), eq('reporting_period_enddate', '13Nov2023'), eq('product_name', 'Fasenra'), eq('site_name', 'fmc'))",
+                    "filter": "and(eq('reporting_period', '14Nov2022_13Nov2023'), eq('product_name', 'Fasenra'), eq('site_name', 'fmc'))",
                 },
             ),
             (
-                "How many batches were outside of the specifications for the product Fasenra during the reporting period between 14Nov2022 and 13Nov2023?",
+                "How many batches were outside of the specifications? Given that the product is Fasenra and the reporting period  14Nov2022_13Nov2023?",
                 {
                     "query": "Count of batches outside of the specifications",
-                    "filter": "and(eq('reporting_period_startdate', '14Nov2022'), eq('reporting_period_enddate', '13Nov2023'), eq('product_name', 'Fasenra'))",
+                    "filter": "and(eq('reporting_period', '14Nov2022_13Nov2023'), eq('product_name', 'Fasenra'))",
                 },
             ),
             (
-                "Summarize the section summary and conclusion for the product Fasenra during the reporting period between '14Nov2022' and '13Nov2023'?",
+                "Summarize the section summary and conclusion. Given that the product is Fasenra and the reporting period  14Nov2022_13Nov2023?",
                 {
                     "query": "summarize the section summary and conclusion",
-                    "filter": "and(eq('reporting_period_startdate', '14Nov2022'), eq('reporting_period_enddate', '13Nov2023'), eq('product_name', 'Fasenra'), eq('section_name', 'summary and conclusion'))",
+                    "filter": "and(eq('reporting_period', '14Nov2022_13Nov2023'), eq('product_name', 'Fasenra'), eq('section_name', 'summary and conclusion'))",
                 },
             ),
             # (
@@ -139,13 +139,8 @@ class ReportGeneration:
 
         metadata_field_info = [
             AttributeInfo(
-                name="reporting_period_startdate",
-                description="The Reporting Period Start date",
-                type="string",
-            ),
-            AttributeInfo(
-                name="reporting_period_enddate",
-                description="The Reporting Period End date",
+                name="reporting_period",
+                description="The Reporting Period of the Report",
                 type="string",
             ),
 

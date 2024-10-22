@@ -541,20 +541,20 @@ def opensearch_document_exists(
 
     # Check if any results were returned
     if response['hits']['total']['value'] > 0:
-        print("Metadata already exists:", response['hits']['hits'])
+        #print("Metadata already exists:", response['hits']['hits'])
         return 1
     else:
-        print("Metadata does not exist.")
+        #print("Metadata does not exist.")
         return 0
 
 def opensearch_insert_docs(documents):
 
-    print(f"Going to insert {len(documents)} to Pinecone")
+    print(f"Going to insert {len(documents)} to OpenSearch")
     # Prepare embeddings and documents for insertion
     opensearch_vdb.add_documents(
         documents=documents,
     )
-    print("****** Added to Pinecone vectorstore vector")
+    print("****** Added to OpenSearch vectorstore vector")
     ################
 
 
@@ -603,10 +603,31 @@ def save_chunks_to_json(chunks, json_filename):
     s3.upload_fileobj(json_bytes, bucket_name, output_path)
 
 
+def save_pqr_paramter_to_json(product_name, reporting_period, site_names, json_filename):
+    """Save the chunked sections to a JSON file."""
+
+    # tmp_file = "/tmp/" + json_filename
+    output_path = f"{output_folder}{json_filename}"
+
+    #Create a dictionary with the lists
+    data = {
+        "product_name": product_name,
+        "reporting_period": reporting_period,
+        "site_names": site_names
+    }
+    # Convert the list of dictionaries to a JSON string
+    json_str = json.dumps(data, indent=4)
+
+    # Convert the JSON string to a bytes object
+    json_bytes = io.BytesIO(json_str.encode("utf-8"))
+
+    s3.upload_fileobj(json_bytes, bucket_name, output_path)
+
 def Ingest_PQR(bucket_name, upload_folder):
     list_of_upload_files = get_list_of_files(bucket_name, upload_folder)
     sections = []
     section_chunks = []
+    site_names = []
     if len(list_of_upload_files) > 0:
         for pqr_file in list_of_upload_files:
             pqr_file_key = pqr_file["Key"]
@@ -615,6 +636,7 @@ def Ingest_PQR(bucket_name, upload_folder):
                 reporting_period, product_name, site_name = Ingest_phase_1(
                     bucket_name, pqr_file_name
                 )
+                site_names.append(site_name)
                 sec_doc = Ingest_phase_2(
                     product_name, reporting_period, site_name, pqr_file_name
                 )
@@ -636,9 +658,12 @@ def Ingest_PQR(bucket_name, upload_folder):
 
     save_chunks_to_json(sections, ispr_json_filename)
     save_chunks_to_json(section_chunks, ispr_chunk_json_filename)
+    save_pqr_paramter_to_json(product_name, reporting_period, site_names, pqr_param_json_filename)
+
+    return product_name, reporting_period, site_names
 
 ### TAking the json file produced by Ingest_pqr() and creating an ispr docx file
-def ispr_generation(bucket_name):
+def ispr_generation(bucket_name, product_name, reporting_period, site_names):
 
     mapping_dic = get_mapping_list(bucket_name, excel_file_path=f"{MAPPING_FILE_PATH}",
                          az_mapping_sheet_name=f"{SHEET_NAME_MAPPING}")
@@ -650,103 +675,103 @@ def ispr_generation(bucket_name):
     ispr_combine_prompt_templates = mapping_dic["ispr_combine_prompt_ls"]
 
 
-    for product_name in product_names:
+    #for product_name in product_names:
 
-        for reporting_period in reporting_periods:
+    #    for reporting_period in reporting_periods:
 
-            ispr_json_filename = "ispr" + "-" + product_name + "-" + reporting_period + ".json"
-            output_path_json = f"{output_folder}{ispr_json_filename}"
-            json_obj = s3.get_object(Bucket=bucket_name, Key=output_path_json)
-            json_data = json_obj['Body'].read().decode('utf-8')  # Read and decode the body
+    ispr_json_filename = "ispr" + "-" + product_name + "-" + reporting_period + ".json"
+    output_path_json = f"{output_folder}{ispr_json_filename}"
+    json_obj = s3.get_object(Bucket=bucket_name, Key=output_path_json)
+    json_data = json_obj['Body'].read().decode('utf-8')  # Read and decode the body
 
-            df = pd.DataFrame(json.loads(json_data))
-            document = Document_docx()
+    df = pd.DataFrame(json.loads(json_data))
+    document = Document_docx()
 
-            for section_index, section_name in enumerate(section_names_keysearch):
-                i = 1
-                document.add_heading(section_names_ispr[section_index], i)
-                i = i + 1
+    for section_index, section_name in enumerate(section_names_keysearch):
+        i = 1
+        document.add_heading(section_names_ispr[section_index], i)
+        i = i + 1
 
-                #### Collecting the text, images and tables present in a specific section
-                docs = []
-                images_section_sites = []
-                tables_section_sites = []
+        #### Collecting the text, images and tables present in a specific section
+        docs = []
+        images_section_sites = []
+        tables_section_sites = []
 
-                for site_name in site_names:
+        for site_name in site_names:
 
-                    # Subsetting specific rows and columns by labels
-                    subset = df.loc[
-                        (df["section_name"] == section_name.lower())
-                        & (df["site_name"] == site_name.lower())
-                        & (df["product_name"] == product_name)
-                        & (df["reporting_period"] == reporting_period),
-                        ["page_num", "images", "tables", "section_name", "text"],
-                    ]
+            # Subsetting specific rows and columns by labels
+            subset = df.loc[
+                (df["section_name"] == section_name.lower())
+                & (df["site_name"] == site_name.lower())
+                & (df["product_name"] == product_name)
+                & (df["reporting_period"] == reporting_period),
+                ["page_num", "images", "tables", "section_name", "text"],
+            ]
 
-                    if not subset.empty:
-                        max_row = subset.loc[subset["page_num"].idxmax()]
-                        if ispr_summary_flag[section_index] == 1:
-                            text = max_row["text"]
-                            for i in range(0, len(text), model_max_tokens):
-                                chunk = text[i:i + model_max_tokens]
-                                doc = Document(
-                                     page_content=chunk,
-                            # metadata=result["matches"][j]["metadata"],
-                                )
-                                docs.append(doc)
-                            images_section_sites.append(max_row["images"])
-                            tables_section_sites.append(max_row["tables"])
-
-
-                        else:
-                            heading_name = section_name + "_" + site_name
-                            document.add_heading(heading_name, i)
-                            document.add_paragraph(max_row["text"])
-                        # Add images
-                            for image_path in max_row["images"]:
-                            #print(image_path)
-                               if len(image_path) > 0:
-                                  img_stream = io.BytesIO()
-                                  s3.download_fileobj(bucket_name, image_path, img_stream)
-                                  img_stream.seek(0)
-
-                                  document.add_picture(
-                                    img_stream, width=Inches(4)
-                                )  # Add image with a fixed width
-
-                        # Add tables
-                            for table_path in max_row["tables"]:
-                               if len(table_path) > 0:
-
-                                   csv_stream = io.BytesIO()
-                                   s3.download_fileobj(bucket_name, table_path, csv_stream)
-                                   csv_stream.seek(0)
-
-                                  # Read the CSV content
-                                   csv_data = list(csv.reader(io.StringIO(csv_stream.read().decode('utf-8'))))
-
-                                  # Create a new table in Word
-                                   rows = len(csv_data)
-                                   cols = len(csv_data[0])
-                                   word_table = document.add_table(rows=rows, cols=cols)
-
-                                  # Populate the Word table
-                                   for row_index, row in enumerate(csv_data):
-                                       for col_index, cell in enumerate(row):
-                                           word_table.cell(row_index, col_index).text = str(cell)
-
-                    else:
-                        continue
+            if not subset.empty:
+                max_row = subset.loc[subset["page_num"].idxmax()]
                 if ispr_summary_flag[section_index] == 1:
-                    summary_text = get_abs_summarize(docs, ispr_map_prompt_templates[section_index], ispr_combine_prompt_templates[section_index])
-                    document.add_paragraph(summary_text)
+                    text = max_row["text"]
+                    for i in range(0, len(text), model_max_tokens):
+                        chunk = text[i:i + model_max_tokens]
+                        doc = Document(
+                            page_content=chunk,
+                            # metadata=result["matches"][j]["metadata"],
+                        )
+                        docs.append(doc)
+                    images_section_sites.append(max_row["images"])
+                    tables_section_sites.append(max_row["tables"])
 
-            ispr_filename = "ispr" + "_" + product_name  + "_" + reporting_period + ".docx"
-            target_filename = f"{output_folder}{ispr_filename}"
 
-            # Save the document to a BytesIO object (in-memory file)
-            doc_stream = io.BytesIO()
-            document.save(doc_stream)
-            doc_stream.seek(0)
-            s3.upload_fileobj(doc_stream, bucket_name, target_filename)
+                else:
+                    heading_name = section_name + "_" + site_name
+                    document.add_heading(heading_name, i)
+                    document.add_paragraph(max_row["text"])
+                    # Add images
+                    for image_path in max_row["images"]:
+                        #print(image_path)
+                        if len(image_path) > 0:
+                            img_stream = io.BytesIO()
+                            s3.download_fileobj(bucket_name, image_path, img_stream)
+                            img_stream.seek(0)
+
+                            document.add_picture(
+                                img_stream, width=Inches(4)
+                            )  # Add image with a fixed width
+
+                    # Add tables
+                    for table_path in max_row["tables"]:
+                        if len(table_path) > 0:
+
+                            csv_stream = io.BytesIO()
+                            s3.download_fileobj(bucket_name, table_path, csv_stream)
+                            csv_stream.seek(0)
+
+                            # Read the CSV content
+                            csv_data = list(csv.reader(io.StringIO(csv_stream.read().decode('utf-8'))))
+
+                            # Create a new table in Word
+                            rows = len(csv_data)
+                            cols = len(csv_data[0])
+                            word_table = document.add_table(rows=rows, cols=cols)
+
+                            # Populate the Word table
+                            for row_index, row in enumerate(csv_data):
+                                for col_index, cell in enumerate(row):
+                                    word_table.cell(row_index, col_index).text = str(cell)
+
+            else:
+                continue
+        if ispr_summary_flag[section_index] == 1:
+            summary_text = get_abs_summarize(docs, ispr_map_prompt_templates[section_index], ispr_combine_prompt_templates[section_index])
+            document.add_paragraph(summary_text)
+
+    ispr_filename = "ispr" + "_" + product_name  + "_" + reporting_period + ".docx"
+    target_filename = f"{output_folder}{ispr_filename}"
+
+    # Save the document to a BytesIO object (in-memory file)
+    doc_stream = io.BytesIO()
+    document.save(doc_stream)
+    doc_stream.seek(0)
+    s3.upload_fileobj(doc_stream, bucket_name, target_filename)
 

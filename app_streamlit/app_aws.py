@@ -73,13 +73,17 @@ embedding = BedrockEmbeddings(model_id=os.environ["aws_embedding_model"])
 #session_id=str(uuid4())
 history = DynamoDBChatMessageHistory(table_name="ReportGen", session_id=session_id)
 
-def generate_response(input_text, chat_history: List[Dict[str, Any]] = []) -> Any:
+product_name = "Fasenra"
+reporting_period = "14Nov2022_13Nov2023"
+
+def generate_response(input_text, product_name, reporting_period, chat_history: List[Dict[str, Any]] = []) -> Any:
 
     chat = ReportGeneration(embedding, opensearch_domain_endpoint, opensearch_index)
     # st.write_stream(chat.ask(input_text))
     #print(opensearch_index)
     #print(opensearch_domain_endpoint)
-    return chat.ask({"question": input_text, "chat_history": chat_history})
+    question_with_context = input_text + f". Given that the product name is {product_name} and the reporting period is {reporting_period}"
+    return chat.ask({"question": question_with_context, "chat_history": chat_history})
     #return chat.ask(input_text, session_id, chat_history)
 
 
@@ -204,11 +208,11 @@ def build_form(col1, col2):
             with st.expander("Sample questions"):
                 st.text(
                     """
-                How many batches were manufactured/rejected at the site fmc at 15K scale for the product Fasenra during the reporting period between 14Nov2022 and 13Nov2023?
-                What where the batch numbers manufactured at the site fmc for the product Fasenra during the reporting period between 14Nov2022 and 13Nov2023?
-                How many batches were fully release at the site fmc  for the product Fasenra during the reporting period between 14Nov2022 and 13Nov2023?
-                How many batches were outside of the specifications for the product Fasenra during the reporting period between 14Nov2022' and 13Nov2023?
-                Summarize the section summary  for the product Fasenra during the reporting period between 14Nov2022 and 13Nov2023?
+                How many batches were manufactured/rejected at the fmc at 15K scale ?
+                What where the batch numbers manufactured at the site fmc 3?
+                How many batches were fully release at the site fmc?
+                How many batches were outside of the specifications?
+                Summarize the section summary?
                 """
                 )
     with col2:
@@ -319,12 +323,22 @@ submit_ispr = st.session_state["submit_ispr"]
 # print(user_input)
 
 
+# Download the file
+response = s3.get_object(Bucket=bucket_name, Key=f"{output_folder}{pqr_param_json_filename}")
+content = response['Body'].read().decode('utf-8')
+# Parse the JSON content
+data = json.loads(content)
+# Extract specific fields into variables
+product_name = data.get('product_name')
+reporting_period = data.get('reporting_period')
+
+
 if user_input:
     with st.spinner("Generating response .."):
         try:
 
             generated_response = generate_response(
-                input_text=user_input, chat_history=st.session_state["chat_history"]
+                input_text=user_input, product_name=product_name, reporting_period=reporting_period, chat_history=st.session_state["chat_history"]
             )
             #print(generated_response)
 

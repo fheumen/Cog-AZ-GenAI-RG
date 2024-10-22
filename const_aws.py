@@ -12,6 +12,7 @@ MAPPING_FILE_PATH = "inputs/Mapping.xlsx"
 SHEET_NAME_MAPPING = "Mapping"
 model_name = "gpt-3.5-turbo-16k-0613"
 bucket_name = f"{BUCKET_NAME}"
+pqr_param_json_filename = "pqr_param.json"
 input_folder = (
     f"{INTPUTS_PATH}"  ### intput directory, where all intputs  files are save
 )

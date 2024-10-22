@@ -21,13 +21,14 @@ opensearch_index = os.environ["OPENSEARCH_INDEX"]
 #section_names = extract_mapping_data["section_names_keysearch"]
 #ispr_summary_flag = extract_mapping_data["section_names_keysearch"]
 #ispr_prompt_templates = extract_mapping_data["ispr_prompt_templates"]
-def Ingestion_Json(event, context):
+def Ingestion_IsprGen(event, context):
     # s3 = boto3.client('s3')
-    Ingest_PQR(bucket_name, upload_folder)
+    product_name, reporting_period, site_names = Ingest_PQR(bucket_name, upload_folder)
+    ispr_generation(bucket_name, product_name, reporting_period, site_names)
     return "Hello from Lambda"
 
 
 event = {"key1": "value1", "key2": "value2", "key3": "value3"}
 
-Ingestion_Json(event, "hhhh")
+Ingestion_IsprGen(event, "hhhh")
 
