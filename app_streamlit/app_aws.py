@@ -73,9 +73,6 @@ embedding = BedrockEmbeddings(model_id=os.environ["aws_embedding_model"])
 #session_id=str(uuid4())
 history = DynamoDBChatMessageHistory(table_name="ReportGen", session_id=session_id)
 
-product_name = "Fasenra"
-reporting_period = "14Nov2022_13Nov2023"
-
 def generate_response(input_text, product_name, reporting_period, chat_history: List[Dict[str, Any]] = []) -> Any:
 
     chat = ReportGeneration(embedding, opensearch_domain_endpoint, opensearch_index)
@@ -331,6 +328,9 @@ data = json.loads(content)
 # Extract specific fields into variables
 product_name = data.get('product_name')
 reporting_period = data.get('reporting_period')
+
+print(f"totototototototot est {product_name}")
+print(f"totototototototot est {reporting_period}")
 
 
 if user_input:
