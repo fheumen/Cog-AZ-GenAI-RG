@@ -48,7 +48,7 @@ import os
 import boto3
 
 ### instantiate client
-client = boto3.client("s3")
+s3 = boto3.client("s3")
 
 # set variables
 bucket = "s3-az-reportgen-bucket"
