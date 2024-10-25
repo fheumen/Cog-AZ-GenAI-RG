@@ -13,10 +13,12 @@ from langchain_community.vectorstores import OpenSearchVectorSearch
 opensearch_domain_endpoint = os.environ["OPENSEARCH_ENDPOINT"]
 opensearch_index = os.environ["OPENSEARCH_INDEX"]
 
+
 def ISPR_Generation(event, context):
     # s3 = boto3.client('s3')
     ispr_generation(bucket_name)
     return "Hello from Lambda"
+
 
 event = {"key1": "value1", "key2": "value2", "key3": "value3"}
 

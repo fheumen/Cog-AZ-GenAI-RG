@@ -1,7 +1,8 @@
 from uuid import uuid4
+
 INDEX_NAME = "aws_azreportgenindex_fab"  ### Pinecone Index Name
 # aws_azreportgenindex_fab
-#model_max_tokens = 8192
+# model_max_tokens = 8192
 model_max_tokens = 7500
 
 BUCKET_NAME = "s3-az-reportgen-bucket"
@@ -21,7 +22,7 @@ input_folder = (
 output_folder = f"{OUTPUTS_PATH}"  ### output directory, where all output files are save
 upload_folder = f"{UPLOAD_TMP_PATH}"
 
-session_id=str(uuid4())
+session_id = str(uuid4())
 
 section_names = [
     "summary and conclusion",
@@ -41,9 +42,6 @@ section_names = [
     "Qualification status",
     "Other",
 ]
-
-
-
 
 
 section_pattern = [

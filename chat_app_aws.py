@@ -143,7 +143,6 @@ class ReportGeneration:
                 description="The Reporting Period of the Report",
                 type="string",
             ),
-
             AttributeInfo(
                 name="product_name", description="Name of the Product", type="string"
             ),
@@ -210,7 +209,7 @@ class ReportGeneration:
             vectorstore=self.vectorstore,
             structured_query_translator=OpenSearchTranslator(),
             search_kwargs={"k": 10},
-            search_type="mmr"
+            search_type="mmr",
         )
 
     def initialize_chat_model(self):
@@ -255,7 +254,7 @@ class ReportGeneration:
             {"context": self.retriever, "question": RunnablePassthrough()}
         ).assign(answer=rag_chain_from_docs)
 
-    def ask(self, query: str,  chat_history: List[Dict[str, Any]] = []) -> Any:
+    def ask(self, query: str, chat_history: List[Dict[str, Any]] = []) -> Any:
         try:
             # for chunk in self.rag_chain_with_source.stream(query):
             #     for key in chunk:
@@ -263,21 +262,21 @@ class ReportGeneration:
             #             yield chunk[key]
             # rag_chain_with_source.invoke(query, callbacks=[trace.getNewHandler()])
 
-            #message_history = DynamoDBChatMessageHistory(
-                #table_name="ReportGen", session_id=session_id
-            #)
-            #memory_chain = ConversationBufferWindowMemory(
-                #memory_key="chat_history",
-                #chat_memory=message_history,
-                #return_messages=True,
-                #k=3,
-            #)
+            # message_history = DynamoDBChatMessageHistory(
+            # table_name="ReportGen", session_id=session_id
+            # )
+            # memory_chain = ConversationBufferWindowMemory(
+            # memory_key="chat_history",
+            # chat_memory=message_history,
+            # return_messages=True,
+            # k=3,
+            # )
 
             qa = StreamingConversationalRetrievalChain.from_llm(
                 llm=self.chat_model,
                 retriever=self.retriever,
                 return_source_documents=True,
-                #memory=memory_chain,
+                # memory=memory_chain,
                 combine_docs_chain_kwargs={"prompt": self.prompt},
                 # callbacks=[langfuse_handler_trace]
                 callbacks=[trace.getNewHandler()],

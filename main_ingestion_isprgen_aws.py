@@ -16,11 +16,12 @@ from langchain_community.vectorstores import OpenSearchVectorSearch
 opensearch_domain_endpoint = os.environ["OPENSEARCH_ENDPOINT"]
 opensearch_index = os.environ["OPENSEARCH_INDEX"]
 
-#extract_mapping_data = get_mapping_list(bucket_name, excel_file_path=f"{MAPPING_FILE_PATH}",
-                                        #az_mapping_sheet_name=f"{SHEET_NAME_MAPPING}")
-#section_names = extract_mapping_data["section_names_keysearch"]
-#ispr_summary_flag = extract_mapping_data["section_names_keysearch"]
-#ispr_prompt_templates = extract_mapping_data["ispr_prompt_templates"]
+
+# extract_mapping_data = get_mapping_list(bucket_name, excel_file_path=f"{MAPPING_FILE_PATH}",
+# az_mapping_sheet_name=f"{SHEET_NAME_MAPPING}")
+# section_names = extract_mapping_data["section_names_keysearch"]
+# ispr_summary_flag = extract_mapping_data["section_names_keysearch"]
+# ispr_prompt_templates = extract_mapping_data["ispr_prompt_templates"]
 def Ingestion_IsprGen(event, context):
     # s3 = boto3.client('s3')
     product_name, reporting_period, site_names = Ingest_PQR(bucket_name, upload_folder)
@@ -31,4 +32,3 @@ def Ingestion_IsprGen(event, context):
 event = {"key1": "value1", "key2": "value2", "key3": "value3"}
 
 Ingestion_IsprGen(event, "hhhh")
-

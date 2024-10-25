@@ -3,8 +3,8 @@ import boto3
 # ------------------------------------------------------------------------
 # DynamoDB
 
-TableName="ReportGen"
-client = boto3.client('dynamodb')
+TableName = "ReportGen"
+client = boto3.client("dynamodb")
 dynamodb = boto3.resource("dynamodb")
 table = dynamodb.Table(TableName)
 
@@ -23,7 +23,7 @@ table.meta.client.get_waiter("table_exists").wait(TableName="ReportGen")
 
 
 ### Clean-up: delete table
-#response = client.delete_table(
+# response = client.delete_table(
 #    TableName='ReportGen'
-#)
-#print(response)
+# )
+# print(response)

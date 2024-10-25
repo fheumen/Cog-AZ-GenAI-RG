@@ -260,7 +260,7 @@ class ReportGeneration:
                 retriever=self.retriever,
                 return_source_documents=True,
                 combine_docs_chain_kwargs={"prompt": self.prompt},
-                #get_chat_history=_get_chat_history,
+                # get_chat_history=_get_chat_history,
                 # callbacks=[langfuse_handler_trace]
                 callbacks=[trace.getNewHandler()],
             )

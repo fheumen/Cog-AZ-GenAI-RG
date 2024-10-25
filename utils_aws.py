@@ -27,7 +27,7 @@ load_dotenv()
 s3 = boto3.client("s3")
 
 
-0######### Initiate AWS Credentials
+0  ######### Initiate AWS Credentials
 service = "aoss"
 credentials = boto3.Session().get_credentials()
 region = boto3.Session().region_name
@@ -50,7 +50,7 @@ openai_api_key = os.environ.get("OPENAI_API_KEY")
 load_dotenv()
 
 chat = ReportGeneration(embedding, opensearch_domain_endpoint, opensearch_index)
-#llm = ChatOpenAI(model_name=model_name, temperature=0, openai_api_key=openai_api_key)
+# llm = ChatOpenAI(model_name=model_name, temperature=0, openai_api_key=openai_api_key)
 llm = chat.chat_model
 
 opensearch_vdb = OpenSearchVectorSearch(
@@ -71,14 +71,17 @@ opensearch_client = OpenSearch(
     use_ssl=True,
     verify_certs=True,
     connection_class=RequestsHttpConnection,
-    http_auth=awsauth # Replace with your credentials
+    http_auth=awsauth,  # Replace with your credentials
 )
+
+
 #### Control the size of token
 def num_tokens_from_string(string: str, encoding_name: str) -> int:
-    #encoding = tiktoken.encoding_for_model(encoding_name)
+    # encoding = tiktoken.encoding_for_model(encoding_name)
     encoding = tiktoken.get_encoding(encoding_name)
     num_tokens = len(encoding.encode(string))
     return num_tokens
+
 
 ### Get the list of files into a S3 directory
 def get_list_of_files(bucket_name, folder_prefix):
@@ -95,17 +98,23 @@ def check_create_dir(bucket_name, path):
 
 
 #### Read the Mapping column wise
-def get_mapping_list(bucket_name, excel_file_path = f"{MAPPING_FILE_PATH}", az_mapping_sheet_name=f"{SHEET_NAME_MAPPING }"):
-    #excel_file_path = f"{MAPPING_FILE_PATH}"
-    #az_mapping_sheet_name = "Mapping"
+def get_mapping_list(
+    bucket_name,
+    excel_file_path=f"{MAPPING_FILE_PATH}",
+    az_mapping_sheet_name=f"{SHEET_NAME_MAPPING }",
+):
+    # excel_file_path = f"{MAPPING_FILE_PATH}"
+    # az_mapping_sheet_name = "Mapping"
 
     # Get the Excel file from S3
     response = s3.get_object(Bucket=bucket_name, Key=excel_file_path)
-    excel_data = response['Body'].read()
+    excel_data = response["Body"].read()
     df_mapping = pd.read_excel(io.BytesIO(excel_data), sheet_name=az_mapping_sheet_name)
 
     section_names_ispr = df_mapping["ISPR Structur Section names"].tolist()
-    section_names_keysearch = [x.lower() for x in df_mapping["Section names key search"].tolist()]
+    section_names_keysearch = [
+        x.lower() for x in df_mapping["Section names key search"].tolist()
+    ]
     ispr_summary_flag = df_mapping["Integration type in ISPR Flag"].tolist()
     ispr_map_prompt_ls = df_mapping["Map Prompt Template"].tolist()
     ispr_combine_prompt_ls = df_mapping["Combine Prompt Template"].tolist()
@@ -115,9 +124,9 @@ def get_mapping_list(bucket_name, excel_file_path = f"{MAPPING_FILE_PATH}", az_m
         "section_names_keysearch": section_names_keysearch,
         "ispr_summary_flag": ispr_summary_flag,
         "ispr_map_prompt_ls": ispr_map_prompt_ls,
-        "ispr_combine_prompt_ls": ispr_combine_prompt_ls
-
+        "ispr_combine_prompt_ls": ispr_combine_prompt_ls,
     }
+
 
 # mapping_dic = get_mapping_list(bucket_name, excel_file_path=f"{MAPPING_FILE_PATH}",
 #                          az_mapping_sheet_name=f"{SHEET_NAME_MAPPING}")
@@ -130,15 +139,25 @@ def get_mapping_list(bucket_name, excel_file_path = f"{MAPPING_FILE_PATH}", az_m
 
 
 #### Get the Summary of sections from PQRs
-def get_abs_summarize(docs,  ispr_map_prompt, ispr_combine_prompt):
-    ispr_map_prompt_tmp = PromptTemplate(template=ispr_map_prompt, input_variables=["text"])
-    ispr_combine_prompt_prompt_tmp = PromptTemplate(template=ispr_combine_prompt, input_variables=["text"])
-    chain = load_summarize_chain(llm, chain_type="map_reduce", map_prompt=ispr_map_prompt_tmp, combine_prompt=ispr_combine_prompt_prompt_tmp )
-    #try:
+def get_abs_summarize(docs, ispr_map_prompt, ispr_combine_prompt):
+    ispr_map_prompt_tmp = PromptTemplate(
+        template=ispr_map_prompt, input_variables=["text"]
+    )
+    ispr_combine_prompt_prompt_tmp = PromptTemplate(
+        template=ispr_combine_prompt, input_variables=["text"]
+    )
+    chain = load_summarize_chain(
+        llm,
+        chain_type="map_reduce",
+        map_prompt=ispr_map_prompt_tmp,
+        combine_prompt=ispr_combine_prompt_prompt_tmp,
+    )
+    # try:
     summary = chain.run(docs)
-    #except:
-    #docs = docs[:-1]
+    # except:
+    # docs = docs[:-1]
     return summary
+
 
 ###################### Extract features from the first pages of a PQR
 def extract_reporting_period_product_name_site_name(
@@ -147,7 +166,7 @@ def extract_reporting_period_product_name_site_name(
 
     site_name = None
     product_name = None
-    reporting_period = None,
+    reporting_period = (None,)
     reporting_period_startdate = None
     reporting_period_enddate = None
     ###### Extract Site Name from the first page
@@ -185,7 +204,13 @@ def extract_reporting_period_product_name_site_name(
         reporting_period = reporting_period_startdate + "_" + reporting_period_enddate
 
         # return reporting_period_startdate, reporting_period_enddate
-    return reporting_period, reporting_period_startdate, reporting_period_enddate, product_name, site_name
+    return (
+        reporting_period,
+        reporting_period_startdate,
+        reporting_period_enddate,
+        product_name,
+        site_name,
+    )
 
 
 ####################
@@ -492,10 +517,14 @@ def Ingest_phase_1(bucket_name, pqr_file_name):
 
     pqr_file_obj = s3.get_object(Bucket=bucket_name, Key=tmp_pqr_pdf_path)
     pqr_file_data = pqr_file_obj["Body"].read()
-    reporting_period, reporting_period_startdate, reporting_period_enddate, product_name, site_name = (
-        ingest_pqr_file(pqr_file_data)
-    )
-    #reporting_period = reporting_period_startdate + "_" + reporting_period_enddate
+    (
+        reporting_period,
+        reporting_period_startdate,
+        reporting_period_enddate,
+        product_name,
+        site_name,
+    ) = ingest_pqr_file(pqr_file_data)
+    # reporting_period = reporting_period_startdate + "_" + reporting_period_enddate
 
     #### create the directory structure if not exist: reporting_period/product_name
     # input_folder_pqr_reporting_period = f"{input_folder}/{product_name}"
@@ -519,10 +548,9 @@ def Ingest_phase_1(bucket_name, pqr_file_name):
 ############
 from langchain_community.vectorstores import OpenSearchVectorSearch
 
+
 #### Check if an entry is already available in Pinececone.
-def opensearch_document_exists(
-     product_name, reporting_period, site_name
-):
+def opensearch_document_exists(product_name, reporting_period, site_name):
     # Perform the metadata search
     response = opensearch_client.search(
         index=opensearch_index,
@@ -531,21 +559,26 @@ def opensearch_document_exists(
                 "bool": {
                     "must": [
                         {"term": {"metadata.product_name.keyword": product_name}},
-                        {"term": {"metadata.reporting_period.keyword": reporting_period}},
-                        {"term": {"metadata.site_name.keyword": site_name}}
+                        {
+                            "term": {
+                                "metadata.reporting_period.keyword": reporting_period
+                            }
+                        },
+                        {"term": {"metadata.site_name.keyword": site_name}},
                     ]
                 }
             }
-        }
+        },
     )
 
     # Check if any results were returned
-    if response['hits']['total']['value'] > 0:
-        #print("Metadata already exists:", response['hits']['hits'])
+    if response["hits"]["total"]["value"] > 0:
+        # print("Metadata already exists:", response['hits']['hits'])
         return 1
     else:
-        #print("Metadata does not exist.")
+        # print("Metadata does not exist.")
         return 0
+
 
 def opensearch_insert_docs(documents):
 
@@ -603,17 +636,19 @@ def save_chunks_to_json(chunks, json_filename):
     s3.upload_fileobj(json_bytes, bucket_name, output_path)
 
 
-def save_pqr_paramter_to_json(product_name, reporting_period, site_names, json_filename):
+def save_pqr_paramter_to_json(
+    product_name, reporting_period, site_names, json_filename
+):
     """Save the chunked sections to a JSON file."""
 
     # tmp_file = "/tmp/" + json_filename
     output_path = f"{output_folder}{json_filename}"
 
-    #Create a dictionary with the lists
+    # Create a dictionary with the lists
     data = {
         "product_name": product_name,
         "reporting_period": reporting_period,
-        "site_names": site_names
+        "site_names": site_names,
     }
     # Convert the list of dictionaries to a JSON string
     json_str = json.dumps(data, indent=4)
@@ -622,6 +657,7 @@ def save_pqr_paramter_to_json(product_name, reporting_period, site_names, json_f
     json_bytes = io.BytesIO(json_str.encode("utf-8"))
 
     s3.upload_fileobj(json_bytes, bucket_name, output_path)
+
 
 def Ingest_PQR(bucket_name, upload_folder):
     list_of_upload_files = get_list_of_files(bucket_name, upload_folder)
@@ -646,7 +682,12 @@ def Ingest_PQR(bucket_name, upload_folder):
                 # print(sec_doc["documents"])
 
                 # pinecone_insert_docs(sec_doc["documents"], INDEX_NAME)
-                if opensearch_document_exists(product_name, reporting_period, site_name) == 0:
+                if (
+                    opensearch_document_exists(
+                        product_name, reporting_period, site_name
+                    )
+                    == 0
+                ):
                     opensearch_insert_docs(sec_doc["documents"])
                 else:
                     print("Metadata already exists:")
@@ -658,15 +699,21 @@ def Ingest_PQR(bucket_name, upload_folder):
 
     save_chunks_to_json(sections, ispr_json_filename)
     save_chunks_to_json(section_chunks, ispr_chunk_json_filename)
-    save_pqr_paramter_to_json(product_name, reporting_period, site_names, pqr_param_json_filename)
+    save_pqr_paramter_to_json(
+        product_name, reporting_period, site_names, pqr_param_json_filename
+    )
 
     return product_name, reporting_period, site_names
+
 
 ### TAking the json file produced by Ingest_pqr() and creating an ispr docx file
 def ispr_generation(bucket_name, product_name, reporting_period, site_names):
 
-    mapping_dic = get_mapping_list(bucket_name, excel_file_path=f"{MAPPING_FILE_PATH}",
-                         az_mapping_sheet_name=f"{SHEET_NAME_MAPPING}")
+    mapping_dic = get_mapping_list(
+        bucket_name,
+        excel_file_path=f"{MAPPING_FILE_PATH}",
+        az_mapping_sheet_name=f"{SHEET_NAME_MAPPING}",
+    )
 
     section_names_keysearch = mapping_dic["section_names_keysearch"]
     section_names_ispr = mapping_dic["section_names_ispr"]
@@ -674,15 +721,14 @@ def ispr_generation(bucket_name, product_name, reporting_period, site_names):
     ispr_map_prompt_templates = mapping_dic["ispr_map_prompt_ls"]
     ispr_combine_prompt_templates = mapping_dic["ispr_combine_prompt_ls"]
 
-
-    #for product_name in product_names:
+    # for product_name in product_names:
 
     #    for reporting_period in reporting_periods:
 
     ispr_json_filename = "ispr" + "-" + product_name + "-" + reporting_period + ".json"
     output_path_json = f"{output_folder}{ispr_json_filename}"
     json_obj = s3.get_object(Bucket=bucket_name, Key=output_path_json)
-    json_data = json_obj['Body'].read().decode('utf-8')  # Read and decode the body
+    json_data = json_obj["Body"].read().decode("utf-8")  # Read and decode the body
 
     df = pd.DataFrame(json.loads(json_data))
     document = Document_docx()
@@ -713,7 +759,7 @@ def ispr_generation(bucket_name, product_name, reporting_period, site_names):
                 if ispr_summary_flag[section_index] == 1:
                     text = max_row["text"]
                     for i in range(0, len(text), model_max_tokens):
-                        chunk = text[i:i + model_max_tokens]
+                        chunk = text[i : i + model_max_tokens]
                         doc = Document(
                             page_content=chunk,
                             # metadata=result["matches"][j]["metadata"],
@@ -722,14 +768,13 @@ def ispr_generation(bucket_name, product_name, reporting_period, site_names):
                     images_section_sites.append(max_row["images"])
                     tables_section_sites.append(max_row["tables"])
 
-
                 else:
                     heading_name = section_name + "_" + site_name
                     document.add_heading(heading_name, i)
                     document.add_paragraph(max_row["text"])
                     # Add images
                     for image_path in max_row["images"]:
-                        #print(image_path)
+                        # print(image_path)
                         if len(image_path) > 0:
                             img_stream = io.BytesIO()
                             s3.download_fileobj(bucket_name, image_path, img_stream)
@@ -748,7 +793,11 @@ def ispr_generation(bucket_name, product_name, reporting_period, site_names):
                             csv_stream.seek(0)
 
                             # Read the CSV content
-                            csv_data = list(csv.reader(io.StringIO(csv_stream.read().decode('utf-8'))))
+                            csv_data = list(
+                                csv.reader(
+                                    io.StringIO(csv_stream.read().decode("utf-8"))
+                                )
+                            )
 
                             # Create a new table in Word
                             rows = len(csv_data)
@@ -758,15 +807,21 @@ def ispr_generation(bucket_name, product_name, reporting_period, site_names):
                             # Populate the Word table
                             for row_index, row in enumerate(csv_data):
                                 for col_index, cell in enumerate(row):
-                                    word_table.cell(row_index, col_index).text = str(cell)
+                                    word_table.cell(row_index, col_index).text = str(
+                                        cell
+                                    )
 
             else:
                 continue
         if ispr_summary_flag[section_index] == 1:
-            summary_text = get_abs_summarize(docs, ispr_map_prompt_templates[section_index], ispr_combine_prompt_templates[section_index])
+            summary_text = get_abs_summarize(
+                docs,
+                ispr_map_prompt_templates[section_index],
+                ispr_combine_prompt_templates[section_index],
+            )
             document.add_paragraph(summary_text)
 
-    ispr_filename = "ispr" + "_" + product_name  + "_" + reporting_period + ".docx"
+    ispr_filename = "ispr" + "_" + product_name + "_" + reporting_period + ".docx"
     target_filename = f"{output_folder}{ispr_filename}"
 
     # Save the document to a BytesIO object (in-memory file)
@@ -774,4 +829,3 @@ def ispr_generation(bucket_name, product_name, reporting_period, site_names):
     document.save(doc_stream)
     doc_stream.seek(0)
     s3.upload_fileobj(doc_stream, bucket_name, target_filename)
-
